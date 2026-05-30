@@ -9,5 +9,13 @@ mkdir -p dist/icons
 cp index.html app.js lib.js liquid.js style.css manifest.json sw.js dist/
 cp icons/icon-192.png icons/icon-512.png dist/icons/
 
-echo "dist/ ready:"
+# Auto-version the service worker cache from a content hash of the runtime assets
+# (everything except sw.js, to avoid a circular hash).
+HASH=$(cat dist/index.html dist/app.js dist/lib.js dist/liquid.js dist/style.css \
+  dist/manifest.json dist/icons/icon-192.png dist/icons/icon-512.png \
+  | shasum | cut -c1-10)
+# Portable in-place sed (works on macOS BSD sed).
+sed -i '' "s/sleep-toggle-dev/sleep-toggle-${HASH}/" dist/sw.js
+
+echo "dist/ ready (cache: sleep-toggle-${HASH}):"
 find dist -type f | sort
