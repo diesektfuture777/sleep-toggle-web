@@ -62,3 +62,39 @@ export function recentStats(sessions, now = Date.now(), windowDays = 7) {
   const total = completed.reduce((sum, s) => sum + durationMinutes(s.startTs, s.endTs), 0);
   return { count, avgMinutes: Math.round(total / count) };
 }
+
+export const DEFAULT_GOAL_MIN = 480; // 8 hours
+
+export function formatTimeLeft(ms) {
+  if (ms <= 0) return 'Past wake time';
+  const totalMin = Math.round(ms / 60000);
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  if (h === 0) return `${m} min left`;
+  const hourWord = h === 1 ? 'hour' : 'hours';
+  return `${h} ${hourWord} ${m} min left`;
+}
+
+function clamp(n, lo, hi) {
+  return Math.min(hi, Math.max(lo, n));
+}
+
+export function sleepScore(session) {
+  if (session.endTs == null) return null;
+  const plannedMin = session.targetTs != null
+    ? (session.targetTs - session.startTs) / 60000
+    : DEFAULT_GOAL_MIN;
+  const safePlanned = plannedMin > 0 ? plannedMin : DEFAULT_GOAL_MIN;
+  const actualMin = (session.endTs - session.startTs) / 60000;
+  const durationScore = clamp(actualMin / safePlanned, 0, 1) * 100;
+  if (session.rating == null) return Math.round(durationScore);
+  const ratingScore = (session.rating / 5) * 100;
+  return Math.round(0.6 * durationScore + 0.4 * ratingScore);
+}
+
+export function scoreBand(n) {
+  if (n >= 85) return 'Great';
+  if (n >= 70) return 'Good';
+  if (n >= 50) return 'Fair';
+  return 'Poor';
+}
