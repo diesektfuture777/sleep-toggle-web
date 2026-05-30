@@ -85,11 +85,23 @@ export function sleepScore(session) {
     ? (session.targetTs - session.startTs) / 60000
     : DEFAULT_GOAL_MIN;
   const safePlanned = plannedMin > 0 ? plannedMin : DEFAULT_GOAL_MIN;
-  const actualMin = (session.endTs - session.startTs) / 60000;
-  const durationScore = clamp(actualMin / safePlanned, 0, 1) * 100;
-  if (session.rating == null) return Math.round(durationScore);
-  const ratingScore = (session.rating / 5) * 100;
-  return Math.round(0.6 * durationScore + 0.4 * ratingScore);
+
+  const tst = totalSleepMin(session);
+  const durationScore = clamp(tst / safePlanned, 0, 1) * 100;
+
+  const eff = sleepEfficiency(session);                 // null when awake unknown
+  const ratingScore = session.rating == null ? null : (session.rating / 5) * 100;
+
+  if (eff != null && ratingScore != null) {
+    return Math.round(0.5 * durationScore + 0.3 * eff + 0.2 * ratingScore);
+  }
+  if (eff != null) {
+    return Math.round(0.6 * durationScore + 0.4 * eff);
+  }
+  if (ratingScore != null) {
+    return Math.round(0.6 * durationScore + 0.4 * ratingScore);
+  }
+  return Math.round(durationScore);
 }
 
 export function scoreBand(n) {

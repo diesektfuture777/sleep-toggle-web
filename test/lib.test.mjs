@@ -98,39 +98,51 @@ test('formatTimeLeft: singular hour, minutes only, and past', () => {
   assert.equal(formatTimeLeft(-5000), 'Past wake time');
 });
 
-test('sleepScore: met goal + top rating = 100', () => {
-  const startTs = 0;
-  const targetTs = 8 * 60 * 60 * 1000;     // 8h planned
-  const endTs = 8 * 60 * 60 * 1000;        // slept exactly 8h
-  assert.equal(sleepScore({ startTs, endTs, targetTs, rating: 5 }), 100);
+// score branches: durationScore uses TST vs planned (targetTs-startTs, else 480)
+test('sleepScore: eff+rating branch (0.5 dur + 0.3 eff + 0.2 rating)', () => {
+  const startTs = 0, targetTs = 8 * 60 * 60 * 1000, endTs = 8 * 60 * 60 * 1000; // planned 8h, TIB 8h
+  // awakeMin 0 -> TST 8h -> dur 100, eff 100; rating 5 -> 100 => 100
+  assert.equal(sleepScore({ startTs, endTs, targetTs, awakeMin: 0, rating: 5 }), 100);
+  // awakeMin 240 -> TST 4h -> dur 50, eff 50; rating 5 -> 100 => 0.5*50+0.3*50+0.2*100=60
+  assert.equal(sleepScore({ startTs, endTs, targetTs, awakeMin: 240, rating: 5 }), 60);
 });
 
-test('sleepScore: under goal blends duration + rating', () => {
-  const startTs = 0;
-  const targetTs = 8 * 60 * 60 * 1000;     // planned 8h
-  const endTs = 4 * 60 * 60 * 1000;        // slept 4h -> durationScore 50
-  // rating 5 -> ratingScore 100; 0.6*50 + 0.4*100 = 70
-  assert.equal(sleepScore({ startTs, endTs, targetTs, rating: 5 }), 70);
+test('sleepScore: eff, no rating (0.6 dur + 0.4 eff)', () => {
+  const startTs = 0, targetTs = 8 * 60 * 60 * 1000, endTs = 8 * 60 * 60 * 1000;
+  // awakeMin 240 -> dur 50, eff 50 => 50
+  assert.equal(sleepScore({ startTs, endTs, targetTs, awakeMin: 240, rating: null }), 50);
 });
 
-test('sleepScore: no rating uses duration only', () => {
-  const startTs = 0;
-  const targetTs = 10 * 60 * 60 * 1000;    // planned 10h
-  const endTs = 5 * 60 * 60 * 1000;        // slept 5h -> 50
-  assert.equal(sleepScore({ startTs, endTs, targetTs, rating: null }), 50);
+test('sleepScore: no awake, rating -> v2 formula (0.6 dur + 0.4 rating)', () => {
+  const startTs = 0, targetTs = 8 * 60 * 60 * 1000, endTs = 4 * 60 * 60 * 1000; // dur 50
+  // rating 5 -> 100 => 0.6*50 + 0.4*100 = 70
+  assert.equal(sleepScore({ startTs, endTs, targetTs, awakeMin: null, rating: 5 }), 70);
+});
+
+test('sleepScore: no awake, no rating -> duration only', () => {
+  const startTs = 0, targetTs = 8 * 60 * 60 * 1000, endTs = 4 * 60 * 60 * 1000; // dur 50
+  assert.equal(sleepScore({ startTs, endTs, targetTs, awakeMin: null, rating: null }), 50);
 });
 
 test('sleepScore: no target falls back to 8h default goal', () => {
-  const startTs = 0;
-  const endTs = 4 * 60 * 60 * 1000;        // 4h of 8h default -> 50, no rating
-  assert.equal(sleepScore({ startTs, endTs, targetTs: null, rating: null }), 50);
+  const startTs = 0, endTs = 4 * 60 * 60 * 1000; // 4h of default 8h -> dur 50
+  assert.equal(sleepScore({ startTs, endTs, targetTs: null, awakeMin: null, rating: null }), 50);
 });
 
 test('sleepScore: oversleep caps duration at 100', () => {
-  const startTs = 0;
-  const targetTs = 6 * 60 * 60 * 1000;     // planned 6h
-  const endTs = 9 * 60 * 60 * 1000;        // slept 9h -> capped 100
-  assert.equal(sleepScore({ startTs, endTs, targetTs, rating: null }), 100);
+  // planned 6h, slept 9h, no awake -> TST 9h, dur capped 100; eff 100 => 100
+  const startTs = 0, targetTs = 6 * 60 * 60 * 1000, endTs = 9 * 60 * 60 * 1000;
+  assert.equal(sleepScore({ startTs, endTs, targetTs, awakeMin: 0, rating: null }), 100);
+});
+
+test('sleepScore: awake >= time-in-bed => no sleep => 0', () => {
+  // TIB 8h, awake 999 clamped to 480 -> TST 0 -> dur 0, eff 0 -> 0
+  const startTs = 0, targetTs = 8 * 60 * 60 * 1000, endTs = 8 * 60 * 60 * 1000;
+  assert.equal(sleepScore({ startTs, endTs, targetTs, awakeMin: 999, rating: null }), 0);
+});
+
+test('sleepScore: null for running session', () => {
+  assert.equal(sleepScore({ startTs: 0, endTs: null, targetTs: 8 * 60 * 60 * 1000 }), null);
 });
 
 test('scoreBand boundaries', () => {
