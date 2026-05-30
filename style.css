@@ -165,3 +165,14 @@ dialog::backdrop { background: rgba(0,0,0,0.6); }
 .score-num { font-size: 34px; font-weight: 700; line-height: 1; color: var(--accent); font-variant-numeric: tabular-nums; }
 .score-band { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin-top: 2px; }
 .history li .score-mini { color: var(--accent); font-weight: 600; margin-left: 10px; }
+
+/* ---- Sleep report ---- */
+.report { display: flex; gap: 10px; margin: 14px 0 0; padding: 0; }
+.report-item { flex: 1; }
+.report dt { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+.report dd { margin: 4px 0 0; font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+.awake-bar { display: flex; height: 10px; border-radius: 6px; overflow: hidden; margin-top: 14px; background: #2a2a36; }
+.awake-bar-asleep { background: var(--accent); }
+.awake-bar-awake { background: #3a3a48; }
+.awake-legend { font-size: 11px; color: var(--muted); margin: 6px 0 0; text-transform: uppercase; letter-spacing: 0.06em; }
