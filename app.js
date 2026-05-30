@@ -1,6 +1,7 @@
 import {
   formatDuration, durationMinutes, getRunningSession, canStart,
   validateEnd, sessionsToCsv, recentStats, formatTimeLeft, sleepScore, scoreBand,
+  totalSleepMin, timeInBedMin, sleepEfficiency, bedtimeConsistency, sanitizeAwake,
 } from './lib.js';
 import * as liquid from './liquid.js';
 
@@ -49,13 +50,17 @@ const els = {
   lastDuration: $('lastDuration'), lastTimes: $('lastTimes'),
   stats: $('stats'), history: $('history'),
   edit: $('editBtn'), export: $('exportBtn'),
-  wakeDialog: $('wakeDialog'), ratingRow: $('ratingRow'), wakeNote: $('wakeNote'), wakeSave: $('wakeSave'),
+  wakeDialog: $('wakeDialog'), ratingRow: $('ratingRow'), wakeNote: $('wakeNote'),
   editDialog: $('editDialog'), editStart: $('editStart'), editEnd: $('editEnd'),
   editError: $('editError'), editCancel: $('editCancel'), editSave: $('editSave'),
   toast: $('toast'),
   night: $('night'), liquid: $('liquid'), clock: $('clock'),
   countdown: $('countdown'), alarm: $('alarm'),
   scoreBox: $('scoreBox'), scoreNum: $('scoreNum'), scoreBand: $('scoreBand'),
+  repTst: $('repTst'), repEff: $('repEff'), repConsistency: $('repConsistency'),
+  awakeBar: $('awakeBar'), awakeBarAsleep: $('awakeBarAsleep'),
+  awakeBarAwake: $('awakeBarAwake'), awakeLegend: $('awakeLegend'),
+  wakeAwake: $('wakeAwake'), wakeSkip: $('wakeSkip'),
   wakeTimeDialog: $('wakeTimeDialog'), wakeTime: $('wakeTime'),
   wakeTimeCancel: $('wakeTimeCancel'), wakeTimeStart: $('wakeTimeStart'),
 };
@@ -135,6 +140,27 @@ function render() {
     const score = sleepScore(last);
     els.scoreNum.textContent = score;
     els.scoreBand.textContent = scoreBand(score);
+
+    els.repTst.textContent = formatDuration(totalSleepMin(last));
+
+    const eff = sleepEfficiency(last);
+    els.repEff.textContent = eff == null ? '—' : `${eff}%`;
+
+    const consistency = bedtimeConsistency(sessions, Date.now());
+    els.repConsistency.textContent = consistency == null ? '—' : `±${consistency} min`;
+
+    const tib = timeInBedMin(last);
+    const awake = sanitizeAwake(last.awakeMin, tib);
+    if (awake != null && tib > 0) {
+      const asleepPct = Math.max(0, Math.min(100, ((tib - awake) / tib) * 100));
+      els.awakeBarAsleep.style.width = `${asleepPct}%`;
+      els.awakeBarAwake.style.width = `${100 - asleepPct}%`;
+      els.awakeBar.hidden = false;
+      els.awakeLegend.hidden = false;
+    } else {
+      els.awakeBar.hidden = true;
+      els.awakeLegend.hidden = true;
+    }
   } else {
     els.lastCard.hidden = true;
   }
@@ -240,8 +266,10 @@ function onPrimary() {
 function openWakeDialog(session) {
   pendingRating = null;
   els.wakeNote.value = '';
+  els.wakeAwake.value = '';
   els.ratingRow.querySelectorAll('button').forEach((b) => b.classList.remove('selected'));
   els.wakeDialog._session = session;
+  els.wakeDialog.returnValue = ''; // clear so a stale "save" can't write on Esc/backdrop
   els.wakeDialog.showModal();
 }
 els.ratingRow.addEventListener('click', (e) => {
@@ -251,13 +279,17 @@ els.ratingRow.addEventListener('click', (e) => {
   els.ratingRow.querySelectorAll('button').forEach((x) => x.classList.remove('selected'));
   b.classList.add('selected');
 });
+els.wakeSkip.addEventListener('click', () => els.wakeDialog.close('skip'));
 els.wakeDialog.addEventListener('close', () => {
   const session = els.wakeDialog._session;
+  els.wakeDialog._session = null;
   if (!session) return;
+  if (els.wakeDialog.returnValue !== 'save') { render(); return; } // Esc/backdrop/Skip: don't write
   session.rating = pendingRating;
   session.note = els.wakeNote.value.trim();
+  const tib = timeInBedMin(session);
+  session.awakeMin = sanitizeAwake(els.wakeAwake.value === '' ? null : els.wakeAwake.value, tib);
   session.updatedAt = Date.now();
-  els.wakeDialog._session = null;
   save(sessions);
   render();
 });
