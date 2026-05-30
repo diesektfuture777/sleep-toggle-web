@@ -1,7 +1,8 @@
 import {
   formatDuration, durationMinutes, getRunningSession, canStart,
-  validateEnd, sessionsToCsv, recentStats,
+  validateEnd, sessionsToCsv, recentStats, formatTimeLeft, sleepScore, scoreBand,
 } from './lib.js';
+import * as liquid from './liquid.js';
 
 const KEY = 'sleepToggle.sessions.v1';
 
@@ -43,7 +44,7 @@ let pendingRating = null;  // selected rating in wake dialog
 // ---------- elements ----------
 const $ = (id) => document.getElementById(id);
 const els = {
-  status: $('status'), statusLine: $('statusLine'), elapsed: $('elapsed'),
+  status: $('status'), statusLine: $('statusLine'),
   primary: $('primaryBtn'), lastCard: $('lastCard'),
   lastDuration: $('lastDuration'), lastTimes: $('lastTimes'),
   stats: $('stats'), history: $('history'),
@@ -52,6 +53,11 @@ const els = {
   editDialog: $('editDialog'), editStart: $('editStart'), editEnd: $('editEnd'),
   editError: $('editError'), editCancel: $('editCancel'), editSave: $('editSave'),
   toast: $('toast'),
+  night: $('night'), liquid: $('liquid'), clock: $('clock'),
+  countdown: $('countdown'), alarm: $('alarm'),
+  scoreBox: $('scoreBox'), scoreNum: $('scoreNum'), scoreBand: $('scoreBand'),
+  wakeTimeDialog: $('wakeTimeDialog'), wakeTime: $('wakeTime'),
+  wakeTimeCancel: $('wakeTimeCancel'), wakeTimeStart: $('wakeTimeStart'),
 };
 
 // ---------- helpers ----------
@@ -75,6 +81,27 @@ function fromLocalInput(value) {
   const d = new Date(value);
   return Number.isNaN(d.getTime()) ? null : d.getTime();
 }
+
+// Default wake time = last used, else now + 8h, rounded to nearest 5 min.
+function defaultWakeValue() {
+  const last = [...sessions].reverse().find((s) => s.targetTs != null);
+  if (last) {
+    const d = new Date(last.targetTs);
+    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  }
+  const d = new Date(Date.now() + 8 * 60 * 60 * 1000);
+  d.setMinutes(Math.round(d.getMinutes() / 5) * 5, 0, 0);
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+// Turn a "HH:MM" wall-clock string into the next future timestamp for that time.
+function wakeStringToTs(value, fromTs) {
+  const [h, m] = value.split(':').map(Number);
+  const d = new Date(fromTs);
+  d.setHours(h, m, 0, 0);
+  if (d.getTime() <= fromTs) d.setDate(d.getDate() + 1); // earlier than now => tomorrow
+  return d.getTime();
+}
 function lastCompleted() {
   for (let i = sessions.length - 1; i >= 0; i--) {
     if (sessions[i].endTs != null) return sessions[i];
@@ -91,15 +118,13 @@ function render() {
     els.statusLine.textContent = 'Sleeping…';
     els.primary.textContent = "I'm Awake";
     els.primary.classList.add('sleeping');
-    els.elapsed.hidden = false;
-    startElapsed(running.startTs);
+    startNight(running);
   } else {
     els.status.classList.remove('sleeping');
     els.statusLine.textContent = 'Not sleeping';
     els.primary.textContent = 'Start Sleep';
     els.primary.classList.remove('sleeping');
-    els.elapsed.hidden = true;
-    stopElapsed();
+    stopNight();
   }
 
   const last = lastCompleted();
@@ -107,6 +132,9 @@ function render() {
     els.lastCard.hidden = false;
     els.lastDuration.textContent = formatDuration(durationMinutes(last.startTs, last.endTs));
     els.lastTimes.textContent = `${fmtTime(last.startTs)} → ${fmtTime(last.endTs)} · ${last.tz}`;
+    const score = sleepScore(last);
+    els.scoreNum.textContent = score;
+    els.scoreBand.textContent = scoreBand(score);
   } else {
     els.lastCard.hidden = true;
   }
@@ -126,31 +154,56 @@ function render() {
     const dur = document.createElement('span');
     dur.className = 'dur';
     dur.textContent = formatDuration(durationMinutes(s.startTs, s.endTs));
-    li.append(when, dur);
+    const sc = document.createElement('span');
+    sc.className = 'score-mini';
+    sc.textContent = sleepScore(s);
+    const right = document.createElement('span');
+    right.append(dur, sc);
+    li.append(when, right);
     els.history.appendChild(li);
   }
 
   els.edit.disabled = lastCompleted() === null;
 }
 
-function startElapsed(startTs) {
+function startNight(session) {
+  if (elapsedTimer) { clearInterval(elapsedTimer); elapsedTimer = null; }
+  els.night.hidden = false;
+  liquid.start(els.liquid);
   const tick = () => {
-    els.elapsed.textContent = formatDuration(durationMinutes(startTs, Date.now()));
+    const now = Date.now();
+    els.clock.textContent = new Date(now).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true });
+    if (session.targetTs != null) {
+      els.countdown.textContent = formatTimeLeft(session.targetTs - now);
+      els.alarm.textContent = `Alarm · ${new Date(session.targetTs).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true })}`;
+      const planned = session.targetTs - session.startTs;
+      liquid.setProgress(planned > 0 ? (now - session.startTs) / planned : 0);
+    } else {
+      els.countdown.textContent = formatDuration(durationMinutes(session.startTs, now));
+      els.alarm.textContent = 'No alarm set';
+      liquid.setProgress(0);
+    }
   };
   tick();
-  stopElapsed();
-  elapsedTimer = setInterval(tick, 30000);
+  elapsedTimer = setInterval(tick, 1000);
 }
-function stopElapsed() {
+function stopNight() {
   if (elapsedTimer) { clearInterval(elapsedTimer); elapsedTimer = null; }
+  liquid.stop();
+  els.night.hidden = true;
 }
 
 // ---------- actions ----------
 function startSleep() {
   if (!canStart(sessions)) { toast('A sleep session is already running.'); return; }
+  els.wakeTime.value = defaultWakeValue();
+  els.wakeTimeDialog.showModal();
+}
+
+function commitStart(targetTs) {
   const now = Date.now();
   sessions.push({
-    id: newId(), startTs: now, endTs: null, tz: tzLabel(),
+    id: newId(), startTs: now, endTs: null, targetTs, tz: tzLabel(),
     rating: null, note: '', createdAt: now, updatedAt: now,
   });
   save(sessions);
@@ -236,6 +289,15 @@ els.editSave.addEventListener('click', (e) => {
   save(sessions);
   els.editDialog.close();
   render();
+});
+
+// ---------- wake-time picker ----------
+els.wakeTimeCancel.addEventListener('click', () => els.wakeTimeDialog.close('cancel'));
+els.wakeTimeDialog.addEventListener('close', () => {
+  if (els.wakeTimeDialog.returnValue !== 'start') return;
+  const value = els.wakeTime.value;
+  if (!value) { toast('Pick a wake-up time.'); return; }
+  commitStart(wakeStringToTs(value, Date.now()));
 });
 
 // ---------- export ----------

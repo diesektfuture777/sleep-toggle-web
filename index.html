@@ -19,15 +19,31 @@
 
     <section class="status" id="status">
       <p class="status-line" id="statusLine">Not sleeping</p>
-      <p class="elapsed" id="elapsed" hidden></p>
+    </section>
+
+    <section class="night" id="night" hidden>
+      <canvas class="liquid" id="liquid"></canvas>
+      <div class="night-readout">
+        <p class="clock" id="clock">—</p>
+        <p class="countdown" id="countdown">—</p>
+        <p class="alarm" id="alarm">—</p>
+      </div>
     </section>
 
     <button class="primary" id="primaryBtn" type="button">Start Sleep</button>
 
     <section class="card" id="lastCard" hidden>
       <h2>Last session</h2>
-      <p class="last-duration" id="lastDuration">—</p>
-      <p class="last-times" id="lastTimes">—</p>
+      <div class="last-row">
+        <div>
+          <p class="last-duration" id="lastDuration">—</p>
+          <p class="last-times" id="lastTimes">—</p>
+        </div>
+        <div class="score" id="scoreBox">
+          <span class="score-num" id="scoreNum">—</span>
+          <span class="score-band" id="scoreBand">—</span>
+        </div>
+      </div>
     </section>
 
     <section class="card">
@@ -41,6 +57,18 @@
       <button class="secondary" id="exportBtn" type="button">Export</button>
     </div>
   </main>
+
+  <!-- Wake-time picker (shown on Start Sleep) -->
+  <dialog id="wakeTimeDialog">
+    <form method="dialog" class="dialog-form">
+      <h2>Set wake-up time</h2>
+      <label>Wake at<input type="time" id="wakeTime" /></label>
+      <menu class="dialog-actions">
+        <button value="cancel" type="button" id="wakeTimeCancel">Cancel</button>
+        <button value="start" id="wakeTimeStart">Start Sleep</button>
+      </menu>
+    </form>
+  </dialog>
 
   <!-- Wake check-in dialog -->
   <dialog id="wakeDialog">
