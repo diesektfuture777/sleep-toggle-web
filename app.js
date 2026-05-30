@@ -172,10 +172,10 @@ function startNight(session) {
   liquid.start(els.liquid);
   const tick = () => {
     const now = Date.now();
-    els.clock.textContent = new Date(now).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    els.clock.textContent = new Date(now).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true });
     if (session.targetTs != null) {
       els.countdown.textContent = formatTimeLeft(session.targetTs - now);
-      els.alarm.textContent = `Alarm · ${new Date(session.targetTs).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
+      els.alarm.textContent = `Alarm · ${new Date(session.targetTs).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true })}`;
       const planned = session.targetTs - session.startTs;
       liquid.setProgress(planned > 0 ? (now - session.startTs) / planned : 0);
     } else {

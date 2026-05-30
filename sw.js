@@ -1,10 +1,11 @@
-const CACHE = 'sleep-toggle-v2';
+const CACHE = 'sleep-toggle-v3';
 const ASSETS = [
   './',
   './index.html',
   './style.css',
   './app.js',
   './lib.js',
+  './liquid.js',
   './manifest.json',
   './icons/icon-192.png',
   './icons/icon-512.png',
