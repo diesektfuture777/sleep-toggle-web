@@ -3,8 +3,7 @@
   --card: #15151d;
   --text: #f2f2f7;
   --muted: #9a9aa8;
-  --accent: #ff6a00;
-  --accent-dim: #7a3300;
+  --accent: #7c5cff;
   --night-accent: #b89bff;
   --night-btn: #5a49c8;
   --danger: #ff453a;
@@ -37,7 +36,6 @@ body {
 .status { text-align: center; }
 .status-line { font-size: 18px; color: var(--muted); margin: 0; }
 .status.sleeping .status-line { color: var(--night-accent); }
-.elapsed { font-size: 34px; font-weight: 700; margin: 6px 0 0; font-variant-numeric: tabular-nums; }
 
 .primary {
   width: 100%;
