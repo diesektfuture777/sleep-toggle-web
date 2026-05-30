@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Sleep Toggle</title>
+  <meta name="theme-color" content="#0a0a0f" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Sleep" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <main class="app">
+    <h1 class="title">Sleep Toggle</h1>
+
+    <section class="status" id="status">
+      <p class="status-line" id="statusLine">Not sleeping</p>
+      <p class="elapsed" id="elapsed" hidden></p>
+    </section>
+
+    <button class="primary" id="primaryBtn" type="button">Start Sleep</button>
+
+    <section class="card" id="lastCard" hidden>
+      <h2>Last session</h2>
+      <p class="last-duration" id="lastDuration">—</p>
+      <p class="last-times" id="lastTimes">—</p>
+    </section>
+
+    <section class="card">
+      <h2>Last 7 days</h2>
+      <p class="stats" id="stats">No completed sessions yet.</p>
+      <ul class="history" id="history"></ul>
+    </section>
+
+    <div class="actions">
+      <button class="secondary" id="editBtn" type="button">Edit last</button>
+      <button class="secondary" id="exportBtn" type="button">Export</button>
+    </div>
+  </main>
+
+  <!-- Wake check-in dialog -->
+  <dialog id="wakeDialog">
+    <form method="dialog" class="dialog-form">
+      <h2>How did you sleep?</h2>
+      <div class="rating" id="ratingRow">
+        <button type="button" data-rating="1">1</button>
+        <button type="button" data-rating="2">2</button>
+        <button type="button" data-rating="3">3</button>
+        <button type="button" data-rating="4">4</button>
+        <button type="button" data-rating="5">5</button>
+      </div>
+      <textarea id="wakeNote" placeholder="Optional note…" rows="3"></textarea>
+      <menu class="dialog-actions">
+        <button value="save" id="wakeSave">Save</button>
+      </menu>
+    </form>
+  </dialog>
+
+  <!-- Edit dialog -->
+  <dialog id="editDialog">
+    <form method="dialog" class="dialog-form">
+      <h2>Edit last session</h2>
+      <label>Start<input type="datetime-local" id="editStart" /></label>
+      <label>End<input type="datetime-local" id="editEnd" /></label>
+      <p class="error" id="editError" hidden></p>
+      <menu class="dialog-actions">
+        <button value="cancel" type="button" id="editCancel">Cancel</button>
+        <button value="save" id="editSave">Save</button>
+      </menu>
+    </form>
+  </dialog>
+
+  <div class="toast" id="toast" hidden></div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
