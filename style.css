@@ -5,6 +5,8 @@
   --muted: #9a9aa8;
   --accent: #ff6a00;
   --accent-dim: #7a3300;
+  --night-accent: #b89bff;
+  --night-btn: #5a49c8;
   --danger: #ff453a;
   --radius: 16px;
 }
@@ -34,7 +36,7 @@ body {
 
 .status { text-align: center; }
 .status-line { font-size: 18px; color: var(--muted); margin: 0; }
-.status.sleeping .status-line { color: var(--accent); }
+.status.sleeping .status-line { color: var(--night-accent); }
 .elapsed { font-size: 34px; font-weight: 700; margin: 6px 0 0; font-variant-numeric: tabular-nums; }
 
 .primary {
@@ -51,7 +53,7 @@ body {
 }
 .primary:active { transform: scale(0.98); }
 .primary:disabled { opacity: 0.5; cursor: default; }
-.primary.sleeping { background: var(--accent-dim); }
+.primary.sleeping { background: var(--night-btn); }
 
 .card {
   background: var(--card);
