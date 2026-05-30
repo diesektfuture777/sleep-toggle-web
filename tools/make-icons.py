@@ -4,7 +4,7 @@ import struct, zlib, os
 
 def make_png(path, size):
     bg = (10, 10, 15)
-    accent = (255, 106, 0)
+    accent = (124, 92, 255)
     cx, cy, r = size * 0.5, size * 0.46, size * 0.30
     ox, oy = cx + r * 0.55, cy - r * 0.30  # cut-out circle for crescent
 
