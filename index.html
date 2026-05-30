@@ -10,6 +10,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="Sleep" />
   <link rel="apple-touch-icon" href="icons/icon-192.png" />
+  <link rel="icon" href="icons/icon-192.png" />
   <link rel="manifest" href="manifest.json" />
   <link rel="stylesheet" href="style.css" />
 </head>
@@ -44,6 +45,22 @@
           <span class="score-band" id="scoreBand">—</span>
         </div>
       </div>
+      <dl class="report">
+        <div class="report-item">
+          <dt>Total sleep</dt><dd id="repTst">—</dd>
+        </div>
+        <div class="report-item">
+          <dt>Efficiency</dt><dd id="repEff">—</dd>
+        </div>
+        <div class="report-item">
+          <dt>Bedtime consistency</dt><dd id="repConsistency">—</dd>
+        </div>
+      </dl>
+      <div class="awake-bar" id="awakeBar" hidden>
+        <div class="awake-bar-asleep" id="awakeBarAsleep"></div>
+        <div class="awake-bar-awake" id="awakeBarAwake"></div>
+      </div>
+      <p class="awake-legend" id="awakeLegend" hidden>Asleep vs awake</p>
     </section>
 
     <section class="card">
@@ -81,8 +98,10 @@
         <button type="button" data-rating="4">4</button>
         <button type="button" data-rating="5">5</button>
       </div>
+      <label>Minutes awake (optional)<input type="number" id="wakeAwake" min="0" inputmode="numeric" placeholder="e.g. 20" /></label>
       <textarea id="wakeNote" placeholder="Optional note…" rows="3"></textarea>
       <menu class="dialog-actions">
+        <button value="skip" type="button" id="wakeSkip">Skip</button>
         <button value="save" id="wakeSave">Save</button>
       </menu>
     </form>
