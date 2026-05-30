@@ -98,3 +98,44 @@ export function scoreBand(n) {
   if (n >= 50) return 'Fair';
   return 'Poor';
 }
+
+export function timeInBedMin(session) {
+  return durationMinutes(session.startTs, session.endTs);
+}
+
+export function sanitizeAwake(awakeMin, tibMin) {
+  const n = Number(awakeMin);
+  if (awakeMin === null || awakeMin === undefined || !Number.isFinite(n) || n < 0) return null;
+  return Math.min(n, Math.max(tibMin, 0));
+}
+
+export function totalSleepMin(session) {
+  const tib = timeInBedMin(session);
+  const awake = sanitizeAwake(session.awakeMin, tib);
+  return Math.max(0, tib - (awake ?? 0));
+}
+
+export function sleepEfficiency(session) {
+  const tib = timeInBedMin(session);
+  const awake = sanitizeAwake(session.awakeMin, tib);
+  if (awake === null) return null;
+  const tst = Math.max(0, tib - awake);
+  return Math.round(clamp(tst / Math.max(tib, 1), 0, 1) * 100);
+}
+
+// Std dev (population) of bedtime-of-day over the last 7 days, in minutes.
+// Bedtimes before noon are shifted +24h so evening/early-morning cluster correctly.
+export function bedtimeConsistency(sessions, now = Date.now(), windowDays = 7) {
+  const cutoff = now - windowDays * 24 * 60 * 60 * 1000;
+  const recent = sessions.filter((s) => s.endTs != null && s.startTs >= cutoff);
+  if (recent.length < 2) return null;
+  const mins = recent.map((s) => {
+    const d = new Date(s.startTs);
+    let m = d.getHours() * 60 + d.getMinutes();
+    if (m < 12 * 60) m += 24 * 60;
+    return m;
+  });
+  const mean = mins.reduce((a, b) => a + b, 0) / mins.length;
+  const variance = mins.reduce((a, b) => a + (b - mean) ** 2, 0) / mins.length;
+  return Math.round(Math.sqrt(variance));
+}

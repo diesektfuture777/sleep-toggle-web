@@ -141,3 +141,56 @@ test('scoreBand boundaries', () => {
   assert.equal(scoreBand(50), 'Fair');
   assert.equal(scoreBand(49), 'Poor');
 });
+
+import {
+  timeInBedMin, sanitizeAwake, totalSleepMin, sleepEfficiency, bedtimeConsistency,
+} from '../lib.js';
+
+const H = 60 * 60 * 1000;
+
+test('timeInBedMin = minutes between start and end', () => {
+  assert.equal(timeInBedMin({ startTs: 0, endTs: 8 * H }), 480);
+});
+
+test('sanitizeAwake: null/invalid/negative -> null; clamps to TIB', () => {
+  assert.equal(sanitizeAwake(null, 480), null);
+  assert.equal(sanitizeAwake('x', 480), null);
+  assert.equal(sanitizeAwake(-5, 480), null);
+  assert.equal(sanitizeAwake(30, 480), 30);
+  assert.equal(sanitizeAwake(600, 480), 480); // clamp to time in bed
+  assert.equal(sanitizeAwake(0, 480), 0);      // 0 is a real value, not null
+});
+
+test('totalSleepMin subtracts awake; equals TIB when unknown', () => {
+  assert.equal(totalSleepMin({ startTs: 0, endTs: 8 * H, awakeMin: 60 }), 420);
+  assert.equal(totalSleepMin({ startTs: 0, endTs: 8 * H, awakeMin: null }), 480);
+  assert.equal(totalSleepMin({ startTs: 0, endTs: 8 * H }), 480); // missing field
+});
+
+test('sleepEfficiency: null when awake unknown, else rounded %', () => {
+  assert.equal(sleepEfficiency({ startTs: 0, endTs: 8 * H, awakeMin: null }), null);
+  assert.equal(sleepEfficiency({ startTs: 0, endTs: 8 * H, awakeMin: 0 }), 100);
+  assert.equal(sleepEfficiency({ startTs: 0, endTs: 8 * H, awakeMin: 60 }), 88); // 420/480
+  assert.equal(sleepEfficiency({ startTs: 0, endTs: 8 * H, awakeMin: 600 }), 0); // clamped
+});
+
+test('bedtimeConsistency: null with <2 sessions', () => {
+  assert.equal(bedtimeConsistency([], Date.now()), null);
+  assert.equal(bedtimeConsistency([{ startTs: Date.now(), endTs: Date.now() + H }], Date.now()), null);
+});
+
+test('bedtimeConsistency: std dev of bedtimes in minutes (handles past-midnight)', () => {
+  // Two bedtimes: 23:00 and 01:00 -> 120 min apart -> stddev 60 (population)
+  const day = 24 * H;
+  const now = new Date('2026-05-31T12:00:00').getTime();
+  const b1 = new Date('2026-05-30T23:00:00').getTime();
+  const b2 = new Date('2026-05-31T01:00:00').getTime();
+  const sessions = [
+    { startTs: b1, endTs: b1 + 7 * H },
+    { startTs: b2, endTs: b2 + 7 * H },
+  ];
+  assert.equal(bedtimeConsistency(sessions, now), 60);
+  // sessions older than 7 days are ignored
+  const old = { startTs: now - 9 * day, endTs: now - 9 * day + 7 * H };
+  assert.equal(bedtimeConsistency([...sessions, old], now), 60);
+});
