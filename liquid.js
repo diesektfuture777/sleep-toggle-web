@@ -61,37 +61,37 @@ function draw() {
   ctx.globalCompositeOperation = 'lighter';
   wavePath(w, h, level + 10, 20, 0.009, -0.45, 2.0);
   ctx.fillStyle = fillGradient(level, h, [
-    [0, 'rgba(255, 120, 40, 0.20)'],
-    [0.5, 'rgba(190, 40, 70, 0.22)'],
-    [1, 'rgba(70, 20, 60, 0.30)'],
+    [0, 'rgba(180, 90, 255, 0.20)'],
+    [0.5, 'rgba(90, 70, 220, 0.22)'],
+    [1, 'rgba(30, 30, 110, 0.30)'],
   ]);
   ctx.fill();
   ctx.restore();
 
-  // Mid layer — the main luminous body, orange -> magenta -> purple.
+  // Mid layer — the main luminous body, violet -> indigo -> deep navy.
   wavePath(w, h, level + 4, 15, 0.012, 0.6, 0.0);
   ctx.fillStyle = fillGradient(level, h, [
-    [0, 'rgba(255, 160, 90, 0.85)'],
-    [0.18, 'rgba(255, 106, 0, 0.85)'],
-    [0.6, 'rgba(200, 45, 70, 0.82)'],
-    [1, 'rgba(95, 25, 75, 0.88)'],
+    [0, 'rgba(220, 130, 255, 0.85)'],
+    [0.18, 'rgba(160, 80, 230, 0.85)'],
+    [0.6, 'rgba(85, 60, 200, 0.84)'],
+    [1, 'rgba(28, 28, 105, 0.90)'],
   ]);
   ctx.fill();
 
   // Front layer — brighter, faster ripple for surface detail.
   wavePath(w, h, level, 9, 0.016, 0.95, 4.0);
   ctx.fillStyle = fillGradient(level, h, [
-    [0, 'rgba(255, 190, 130, 0.55)'],
-    [0.4, 'rgba(255, 120, 30, 0.35)'],
-    [1, 'rgba(160, 40, 80, 0.25)'],
+    [0, 'rgba(255, 180, 235, 0.55)'],
+    [0.4, 'rgba(180, 100, 240, 0.35)'],
+    [1, 'rgba(70, 60, 190, 0.25)'],
   ]);
   ctx.fill();
 
   // Glowing crest highlight along the front waterline.
   ctx.save();
-  ctx.shadowColor = 'rgba(255, 150, 70, 0.8)';
+  ctx.shadowColor = 'rgba(190, 150, 255, 0.85)';
   ctx.shadowBlur = 18;
-  ctx.strokeStyle = 'rgba(255, 200, 150, 0.9)';
+  ctx.strokeStyle = 'rgba(230, 200, 255, 0.9)';
   ctx.lineWidth = 2;
   ctx.beginPath();
   for (let x = 0; x <= w; x += 3) {
