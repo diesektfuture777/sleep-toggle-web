@@ -2,10 +2,12 @@ import {
   formatDuration, durationMinutes, getRunningSession, canStart,
   validateEnd, sessionsToCsv, recentStats, formatTimeLeft, sleepScore, scoreBand,
   totalSleepMin, timeInBedMin, sleepEfficiency, bedtimeConsistency, sanitizeAwake,
+  DEFAULT_GOAL_MIN, trendSeries, rangeSummary, currentStreak, sanitizeGoal,
 } from './lib.js';
 import * as liquid from './liquid.js';
 
 const KEY = 'sleepToggle.sessions.v1';
+const SETTINGS_KEY = 'sleepToggle.settings.v1';
 
 // ---------- storage ----------
 function load() {
@@ -18,6 +20,17 @@ function load() {
 }
 function save(list) {
   localStorage.setItem(KEY, JSON.stringify(list));
+}
+function loadSettings() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}');
+    return { goalMin: sanitizeGoal(raw.goalMin ?? DEFAULT_GOAL_MIN) };
+  } catch {
+    return { goalMin: DEFAULT_GOAL_MIN };
+  }
+}
+function saveSettings(s) {
+  localStorage.setItem(SETTINGS_KEY, JSON.stringify(s));
 }
 
 function tzLabel() {
@@ -38,6 +51,8 @@ function newId() {
 
 // ---------- state ----------
 let sessions = load();
+let settings = loadSettings();
+let currentRange = 7;
 let busy = false;          // double-tap guard
 let elapsedTimer = null;
 let pendingRating = null;  // selected rating in wake dialog
@@ -63,6 +78,12 @@ const els = {
   wakeAwake: $('wakeAwake'), wakeSkip: $('wakeSkip'),
   wakeTimeDialog: $('wakeTimeDialog'), wakeTime: $('wakeTime'),
   wakeTimeCancel: $('wakeTimeCancel'), wakeTimeStart: $('wakeTimeStart'),
+  tabs: $('tabs'), homeView: $('homeView'), trendsView: $('trendsView'),
+  rangeToggle: $('rangeToggle'), goalLabel: $('goalLabel'), goalEdit: $('goalEdit'),
+  streak: $('streak'), trendSummary: $('trendSummary'),
+  durationBars: $('durationBars'), driftChart: $('driftChart'),
+  goalDialog: $('goalDialog'), goalHours: $('goalHours'),
+  goalCancel: $('goalCancel'), goalSave: $('goalSave'),
 };
 
 // ---------- helpers ----------
@@ -354,10 +375,115 @@ async function exportCsv() {
   }
 }
 
+// ---------- trends ----------
+function setView(view) {
+  els.homeView.hidden = view !== 'home';
+  els.trendsView.hidden = view !== 'trends';
+  els.tabs.querySelectorAll('.tab').forEach((b) =>
+    b.classList.toggle('active', b.dataset.view === view));
+  if (view === 'trends') renderTrends();
+}
+
+function goalHoursLabel(goalMin) {
+  return `${(goalMin / 60).toString().replace(/\.0$/, '')}h`;
+}
+
+function renderTrends() {
+  const goalMin = settings.goalMin;
+  els.goalLabel.textContent = goalHoursLabel(goalMin);
+  const n = currentStreak(sessions, goalMin, Date.now());
+  els.streak.textContent = `🔥 ${n} night${n === 1 ? '' : 's'} ≥${goalHoursLabel(goalMin)}`;
+
+  const series = trendSeries(sessions, currentRange, Date.now());
+  const sum = rangeSummary(sessions, currentRange, Date.now());
+
+  els.trendSummary.textContent = sum.nightsTracked === 0
+    ? 'No nights tracked yet.'
+    : `${sum.nightsTracked} night${sum.nightsTracked === 1 ? '' : 's'} · avg ${formatDuration(sum.avgTimeInBed)}`
+      + ` · best ${formatDuration(sum.best.timeInBedMin)} · worst ${formatDuration(sum.worst.timeInBedMin)}`
+      + (sum.avgEfficiency == null ? '' : ` · eff ${sum.avgEfficiency}% (${sum.efficiencyNights} night${sum.efficiencyNights === 1 ? '' : 's'})`);
+
+  els.durationBars.innerHTML = '';
+  if (series.length === 0) {
+    els.durationBars.textContent = 'No nights tracked yet.';
+  } else {
+    const maxMin = Math.max(goalMin, ...series.map((s) => s.timeInBedMin), 1);
+    for (const s of series) {
+      const bar = document.createElement('div');
+      bar.className = 'bar' + (s.timeInBedMin >= goalMin ? ' hit' : '');
+      bar.style.height = `${(s.timeInBedMin / maxMin) * 100}%`;
+      bar.title = `${s.night}: ${formatDuration(s.timeInBedMin)}`;
+      els.durationBars.appendChild(bar);
+    }
+    const line = document.createElement('div');
+    line.className = 'goal-line';
+    line.style.bottom = `${(goalMin / maxMin) * 100}%`;
+    els.durationBars.appendChild(line);
+  }
+
+  renderDrift(series);
+}
+
+const SVG_NS = 'http://www.w3.org/2000/svg';
+function renderDrift(series) {
+  els.driftChart.innerHTML = '';
+  if (series.length === 0) { els.driftChart.textContent = 'No nights tracked yet.'; return; }
+  const W = Math.max(series.length * 28, 60), H = 140, AX0 = 1080, AX1 = 2160; // 18:00..36:00
+  const yOf = (min) => {
+    let m = min < 12 * 60 ? min + 24 * 60 : min;            // before noon => next day
+    m = Math.max(AX0, Math.min(AX1, m));
+    return ((m - AX0) / (AX1 - AX0)) * (H - 16) + 8;
+  };
+  const colW = W / series.length;
+  const svg = document.createElementNS(SVG_NS, 'svg');
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  svg.setAttribute('preserveAspectRatio', 'none');
+  series.forEach((s, i) => {
+    const x = colW * (i + 0.5);
+    const yb = yOf(s.bedtimeMin), yw = yOf(s.wakeMin);
+    const seg = document.createElementNS(SVG_NS, 'line');
+    seg.setAttribute('class', 'link-seg');
+    seg.setAttribute('x1', x); seg.setAttribute('x2', x);
+    seg.setAttribute('y1', yb); seg.setAttribute('y2', yw);
+    svg.appendChild(seg);
+    for (const [y, cls] of [[yb, 'dot-bed'], [yw, 'dot-wake']]) {
+      const c = document.createElementNS(SVG_NS, 'circle');
+      c.setAttribute('class', cls);
+      c.setAttribute('cx', x); c.setAttribute('cy', y); c.setAttribute('r', 4);
+      svg.appendChild(c);
+    }
+  });
+  els.driftChart.appendChild(svg);
+}
+
 // ---------- wiring ----------
 els.primary.addEventListener('click', onPrimary);
 els.edit.addEventListener('click', openEdit);
 els.export.addEventListener('click', exportCsv);
+
+els.tabs.addEventListener('click', (e) => {
+  const b = e.target.closest('.tab');
+  if (b) setView(b.dataset.view);
+});
+els.rangeToggle.addEventListener('click', (e) => {
+  const b = e.target.closest('.range');
+  if (!b) return;
+  currentRange = Number(b.dataset.range);
+  els.rangeToggle.querySelectorAll('.range').forEach((x) => x.classList.toggle('active', x === b));
+  renderTrends();
+});
+els.goalEdit.addEventListener('click', () => {
+  els.goalHours.value = (settings.goalMin / 60).toString();
+  els.goalDialog.showModal();
+});
+els.goalCancel.addEventListener('click', () => els.goalDialog.close());
+els.goalSave.addEventListener('click', (e) => {
+  e.preventDefault();
+  settings = { goalMin: sanitizeGoal(Number(els.goalHours.value) * 60) };
+  saveSettings(settings);
+  els.goalDialog.close();
+  renderTrends();
+});
 
 render();
 
