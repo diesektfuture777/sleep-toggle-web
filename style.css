@@ -202,3 +202,21 @@ dialog::backdrop { background: rgba(0,0,0,0.6); }
 .drift .dot-wake { fill: var(--accent); }
 .drift .link-seg { stroke: #3a3a48; stroke-width: 1.5; }
 .drift:empty::after, .drift > :not(svg) { color: var(--muted); font-size: 14px; }
+
+/* ---------- v5: badges, shelf, brain dump ---------- */
+.rating { flex-wrap: wrap; }
+.rating button { flex: 1 1 30%; }
+
+.badges { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+.badge-tag { display: inline-flex; align-items: center; gap: 5px; padding: 5px 10px; border-radius: 999px; background: #221c3a; color: var(--text); font-size: 13px; }
+.hist-badges { margin-left: 6px; }
+
+.shelf { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
+.shelf li { display: flex; align-items: center; gap: 10px; font-size: 15px; color: var(--muted); }
+.shelf li.earned { color: var(--text); }
+.shelf li .mark { margin-left: auto; }
+.shelf li.earned .mark { color: var(--accent); }
+
+.debt { margin: 8px 0 0; color: var(--muted); }
+.brain-btn { width: 100%; margin-top: 10px; }
+.brain-reveal { white-space: pre-wrap; line-height: 1.5; margin: 0 0 12px; }

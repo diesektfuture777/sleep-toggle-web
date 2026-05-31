@@ -267,3 +267,55 @@ export function sanitizeGoal(value) {
   if (!Number.isFinite(n) || n <= 0) return DEFAULT_GOAL_MIN;
   return Math.round(clamp(n, 60, 960) / 5) * 5;
 }
+
+// ---------- v5: rating words, badges, sleep debt, brain dump ----------
+
+export const RATING_LABELS = [null, 'Very Poor', 'Poor', 'Fair', 'Good', 'Excellent'];
+export function ratingLabel(n) {
+  return RATING_LABELS[n] ?? '—';
+}
+
+export const BADGES = {
+  rock: { emoji: '🪨', name: 'The Rock', phrase: 'Slept like a rock!' },
+  owl: { emoji: '🦉', name: 'The Owl', phrase: 'Night owl mode active' },
+  zombie: { emoji: '🧟', name: 'The Zombie', phrase: 'Running on empty today' },
+  earlybird: { emoji: '🌅', name: 'The Early Bird', phrase: 'Up with the sun!' },
+};
+
+// Badges a single COMPLETED session earns, from its own data (tz-aware, honest).
+export function badgesFor(session) {
+  if (session.endTs == null) return [];
+  const tib = timeInBedMin(session);
+  const awake = sanitizeAwake(session.awakeMin, tib); // null when unknown
+  const bed = timeOfDayMin(session.startTs, session.tz);
+  const wake = timeOfDayMin(session.endTs, session.tz);
+  const keys = [];
+  if (tib >= 480 && (awake == null ? session.rating === 5 : awake <= 15)) keys.push('rock');
+  if (bed >= 60 && bed < 12 * 60) keys.push('owl');           // 01:00..11:59 = past-midnight bedtime
+  if (session.rating === 1 || tib < 300) keys.push('zombie'); // very poor or <5h
+  if (wake >= 240 && wake < 360) keys.push('earlybird');      // woke 04:00..05:59
+  return keys.map((key) => ({ key, ...BADGES[key] }));
+}
+
+export function earnedBadges(sessions) {
+  const set = new Set();
+  for (const s of sessions) for (const b of badgesFor(s)) set.add(b.key);
+  return set;
+}
+
+export function sleepDebt(sessions, goalMin, rangeDays, now = Date.now()) {
+  const series = trendSeries(sessions, rangeDays, now);
+  let debtMin = 0;
+  for (const s of series) debtMin += Math.max(0, goalMin - s.timeInBedMin);
+  return { debtMin, nightsCounted: series.length };
+}
+
+// Brain dump reveals once the local calendar date has changed from when it was written.
+export function brainDumpVisible(dump, now = Date.now()) {
+  if (!dump || !dump.text || !dump.text.trim()) return false;
+  const localDate = (ts) => {
+    const d = new Date(ts);
+    return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+  };
+  return localDate(dump.createdAt) !== localDate(now);
+}
