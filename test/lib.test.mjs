@@ -20,6 +20,13 @@ import {
   rangeSummary,
   currentStreak,
   sanitizeGoal,
+  RATING_LABELS,
+  ratingLabel,
+  BADGES,
+  badgesFor,
+  earnedBadges,
+  sleepDebt,
+  brainDumpVisible,
 } from '../lib.js';
 
 test('formatDuration formats h/m', () => {
@@ -341,4 +348,103 @@ test('sanitizeGoal: clamps, rounds to 5, invalid -> default', () => {
   assert.equal(sanitizeGoal(2000), 960);
   assert.equal(sanitizeGoal('nope'), DEFAULT_GOAL_MIN);
   assert.equal(sanitizeGoal(-10), DEFAULT_GOAL_MIN);
+});
+
+// ---------- v5: rating words, badges, sleep debt, brain dump ----------
+
+test('ratingLabel: 1..5 map to words, out-of-range -> dash', () => {
+  assert.equal(ratingLabel(5), 'Excellent');
+  assert.equal(ratingLabel(4), 'Good');
+  assert.equal(ratingLabel(3), 'Fair');
+  assert.equal(ratingLabel(2), 'Poor');
+  assert.equal(ratingLabel(1), 'Very Poor');
+  assert.equal(ratingLabel(0), '—');
+  assert.equal(ratingLabel(6), '—');
+  assert.equal(ratingLabel(null), '—');
+});
+
+test('badgesFor: rock at 8h with low awake', () => {
+  const s = sess('r', Date.UTC(2026, 4, 31, 15, 0), Date.UTC(2026, 4, 31, 23, 0), { awakeMin: 10 }); // 23:00->07:00 SGT, 8h
+  assert.ok(badgesFor(s).some((b) => b.key === 'rock'));
+});
+
+test('badgesFor: rock via Excellent rating when awake unknown', () => {
+  const s = sess('r', Date.UTC(2026, 4, 31, 15, 0), Date.UTC(2026, 4, 31, 23, 0), { rating: 5 });
+  assert.ok(badgesFor(s).some((b) => b.key === 'rock'));
+});
+
+test('badgesFor: no rock at 8h with high awake', () => {
+  const s = sess('r', Date.UTC(2026, 4, 31, 15, 0), Date.UTC(2026, 4, 31, 23, 0), { awakeMin: 90 });
+  assert.ok(!badgesFor(s).some((b) => b.key === 'rock'));
+});
+
+test('badgesFor: owl on 01:30 bedtime, not on 22:00', () => {
+  const owl = sess('o', Date.UTC(2026, 4, 31, 17, 30), Date.UTC(2026, 5, 1, 1, 0)); // 01:30 SGT bedtime
+  const notOwl = sess('n', Date.UTC(2026, 4, 31, 14, 0), Date.UTC(2026, 4, 31, 22, 0)); // 22:00 SGT
+  assert.ok(badgesFor(owl).some((b) => b.key === 'owl'));
+  assert.ok(!badgesFor(notOwl).some((b) => b.key === 'owl'));
+});
+
+test('badgesFor: zombie on rating 1 and on <5h', () => {
+  const bad = sess('z', Date.UTC(2026, 4, 31, 14, 0), Date.UTC(2026, 4, 31, 22, 0), { rating: 1 });
+  const short = sess('s', Date.UTC(2026, 4, 31, 14, 0), Date.UTC(2026, 4, 31, 17, 0)); // 3h
+  assert.ok(badgesFor(bad).some((b) => b.key === 'zombie'));
+  assert.ok(badgesFor(short).some((b) => b.key === 'zombie'));
+});
+
+test('badgesFor: earlybird on 05:30 wake, not on 12:00 wake', () => {
+  const early = sess('e', Date.UTC(2026, 4, 31, 15, 0), Date.UTC(2026, 4, 31, 21, 30)); // wake 05:30 SGT
+  const noon = sess('m', Date.UTC(2026, 4, 31, 18, 0), Date.UTC(2026, 5, 1, 4, 0));     // wake 12:00 SGT
+  assert.ok(badgesFor(early).some((b) => b.key === 'earlybird'));
+  assert.ok(!badgesFor(noon).some((b) => b.key === 'earlybird'));
+});
+
+test('badgesFor: running session -> none', () => {
+  assert.deepEqual(badgesFor(sess('x', Date.UTC(2026, 4, 31, 15, 0), null)), []);
+});
+
+test('earnedBadges: union of keys across sessions; running ignored', () => {
+  const list = [
+    sess('a', Date.UTC(2026, 4, 31, 15, 0), Date.UTC(2026, 4, 31, 23, 0), { awakeMin: 5 }), // rock
+    sess('b', Date.UTC(2026, 4, 30, 14, 0), Date.UTC(2026, 4, 30, 17, 0)),                  // zombie (<5h)
+    sess('c', Date.UTC(2026, 4, 29, 15, 0), null),                                          // running
+  ];
+  const set = earnedBadges(list);
+  assert.ok(set.has('rock'));
+  assert.ok(set.has('zombie'));
+  assert.equal(earnedBadges([]).size, 0);
+});
+
+test('sleepDebt: sums only below-goal nights, tracked only', () => {
+  const list = [
+    sess('a', Date.UTC(2026, 4, 30, 14, 0), Date.UTC(2026, 4, 30, 20, 0)), // 05-30, 6h -> 2h debt
+    sess('b', Date.UTC(2026, 4, 31, 14, 0), Date.UTC(2026, 4, 31, 23, 0)), // 05-31, 9h -> 0
+  ];
+  const r = sleepDebt(list, 480, 7, NOW);
+  assert.equal(r.debtMin, 120);
+  assert.equal(r.nightsCounted, 2);
+});
+
+test('sleepDebt: empty range -> zero', () => {
+  assert.deepEqual(sleepDebt([], 480, 7, NOW), { debtMin: 0, nightsCounted: 0 });
+});
+
+test('sleepDebt: recomputes with goal', () => {
+  const list = [sess('a', Date.UTC(2026, 4, 31, 14, 0), Date.UTC(2026, 4, 31, 20, 0))]; // 6h, 05-31
+  assert.equal(sleepDebt(list, 420, 7, NOW).debtMin, 60);
+  assert.equal(sleepDebt(list, 480, 7, NOW).debtMin, 120);
+});
+
+test('brainDumpVisible: same local day hidden, next day shown', () => {
+  const created = new Date('2026-05-31T23:00:00').getTime();
+  const sameDay = new Date('2026-05-31T23:30:00').getTime();
+  const nextDay = new Date('2026-06-01T07:00:00').getTime();
+  assert.equal(brainDumpVisible({ text: 'x', createdAt: created }, sameDay), false);
+  assert.equal(brainDumpVisible({ text: 'x', createdAt: created }, nextDay), true);
+});
+
+test('brainDumpVisible: empty/null hidden', () => {
+  const now = Date.now();
+  assert.equal(brainDumpVisible({ text: '   ', createdAt: 0 }, now), false);
+  assert.equal(brainDumpVisible(null, now), false);
 });
