@@ -13,6 +13,13 @@ import {
   sleepScore,
   scoreBand,
   DEFAULT_GOAL_MIN,
+  nightDate,
+  timeOfDayMin,
+  groupByNight,
+  trendSeries,
+  rangeSummary,
+  currentStreak,
+  sanitizeGoal,
 } from '../lib.js';
 
 test('formatDuration formats h/m', () => {
@@ -205,4 +212,133 @@ test('bedtimeConsistency: std dev of bedtimes in minutes (handles past-midnight)
   // sessions older than 7 days are ignored
   const old = { startTs: now - 9 * day, endTs: now - 9 * day + 7 * H };
   assert.equal(bedtimeConsistency([...sessions, old], now), 60);
+});
+
+// ---------- v4: trends + goal/streak ----------
+
+const sess = (id, startUTC, endUTC, extra = {}) => ({
+  id, startTs: startUTC, endTs: endUTC, tz: 'Asia/Singapore', awakeMin: null, ...extra,
+});
+const NOW = Date.UTC(2026, 5, 1, 4, 0); // 2026-06-01 12:00 SGT
+
+test('nightDate: after-noon start keeps same calendar date', () => {
+  assert.equal(nightDate(Date.UTC(2026, 4, 31, 14, 0), 'Asia/Singapore'), '2026-05-31'); // 22:00 SGT
+});
+
+test('nightDate: before-noon start shifts to previous day', () => {
+  assert.equal(nightDate(Date.UTC(2026, 4, 31, 17, 0), 'Asia/Singapore'), '2026-05-31'); // 01:00 SGT next day
+});
+
+test('nightDate: boundary 11:59 shifts back, 12:00 stays', () => {
+  assert.equal(nightDate(Date.UTC(2026, 4, 31, 3, 59), 'Asia/Singapore'), '2026-05-30'); // 11:59 SGT
+  assert.equal(nightDate(Date.UTC(2026, 4, 31, 4, 0), 'Asia/Singapore'), '2026-05-31');  // 12:00 SGT
+});
+
+test('nightDate: midnight 00:00 shifts to previous day', () => {
+  assert.equal(nightDate(Date.UTC(2026, 4, 31, 16, 0), 'Asia/Singapore'), '2026-05-31'); // 00:00 SGT next day
+});
+
+test('nightDate: invalid tz falls back without throwing', () => {
+  const ts = Date.UTC(2026, 4, 31, 14, 0);
+  assert.doesNotThrow(() => nightDate(ts, 'UTC+08:00'));
+  assert.match(nightDate(ts, 'UTC+08:00'), /^\d{4}-\d{2}-\d{2}$/);
+});
+
+test('timeOfDayMin: tz-aware minutes since local midnight', () => {
+  assert.equal(timeOfDayMin(Date.UTC(2026, 4, 31, 14, 30), 'Asia/Singapore'), 22 * 60 + 30);
+});
+
+test('timeOfDayMin: invalid tz falls back without throwing', () => {
+  assert.doesNotThrow(() => timeOfDayMin(Date.UTC(2026, 4, 31, 14, 30), 'UTC+08:00'));
+});
+
+test('groupByNight: excludes running sessions', () => {
+  assert.equal(groupByNight([sess('a', Date.UTC(2026, 4, 31, 14, 0), null)]).size, 0);
+});
+
+test('groupByNight: same night keeps the longer session', () => {
+  const short = sess('s', Date.UTC(2026, 4, 31, 14, 0), Date.UTC(2026, 4, 31, 15, 0)); // 1h
+  const long = sess('l', Date.UTC(2026, 4, 31, 15, 0), Date.UTC(2026, 4, 31, 21, 0));  // 6h
+  const m = groupByNight([short, long]);
+  assert.equal(m.size, 1);
+  assert.equal(m.get('2026-05-31').id, 'l');
+});
+
+test('trendSeries: chronological, gaps absent, efficiency null when awake unknown', () => {
+  const list = [
+    sess('n1', Date.UTC(2026, 4, 30, 14, 0), Date.UTC(2026, 4, 30, 22, 0)), // 05-30, 8h
+    sess('n2', Date.UTC(2026, 4, 31, 14, 0), Date.UTC(2026, 4, 31, 20, 0)), // 05-31, 6h
+  ];
+  const s = trendSeries(list, 7, NOW);
+  assert.equal(s.length, 2);
+  assert.deepEqual(s.map((x) => x.night), ['2026-05-30', '2026-05-31']);
+  assert.equal(s[0].efficiency, null);
+  assert.equal(s[1].timeInBedMin, 360);
+});
+
+test('trendSeries: all-untracked range returns empty', () => {
+  assert.deepEqual(trendSeries([], 7, NOW), []);
+});
+
+test('rangeSummary: efficiency only over real-awake nights + count', () => {
+  const list = [
+    sess('n1', Date.UTC(2026, 4, 30, 14, 0), Date.UTC(2026, 4, 30, 22, 0), { awakeMin: 60 }),
+    sess('n2', Date.UTC(2026, 4, 31, 14, 0), Date.UTC(2026, 4, 31, 20, 0)),
+  ];
+  const r = rangeSummary(list, 7, NOW);
+  assert.equal(r.nightsTracked, 2);
+  assert.equal(r.efficiencyNights, 1);
+  assert.notEqual(r.avgEfficiency, null);
+  assert.equal(r.best.timeInBedMin, 480);
+  assert.equal(r.worst.timeInBedMin, 360);
+});
+
+test('rangeSummary: empty range => zeros and null efficiency', () => {
+  const r = rangeSummary([], 7, NOW);
+  assert.equal(r.nightsTracked, 0);
+  assert.equal(r.avgEfficiency, null);
+  assert.equal(r.best, null);
+});
+
+test('currentStreak: gap on most recent night breaks immediately', () => {
+  const list = [
+    sess('a', Date.UTC(2026, 4, 29, 14, 0), Date.UTC(2026, 4, 29, 23, 0)), // 05-29, 9h
+    sess('b', Date.UTC(2026, 4, 30, 14, 0), Date.UTC(2026, 4, 30, 23, 0)), // 05-30, 9h
+  ];
+  assert.equal(currentStreak(list, 480, NOW), 0); // 05-31 untracked, anchor 06-01
+});
+
+test('currentStreak: unlogged tonight does not reset prior run', () => {
+  const list = [
+    sess('a', Date.UTC(2026, 4, 30, 14, 0), Date.UTC(2026, 4, 30, 23, 0)), // 05-30, 9h
+    sess('b', Date.UTC(2026, 4, 31, 14, 0), Date.UTC(2026, 4, 31, 23, 0)), // 05-31, 9h
+  ];
+  const now = Date.UTC(2026, 5, 1, 14, 0); // 06-01 22:00 SGT, tonight not logged
+  assert.equal(currentStreak(list, 480, now), 2);
+});
+
+test('currentStreak: below-goal most-recent night breaks', () => {
+  const list = [
+    sess('a', Date.UTC(2026, 4, 30, 14, 0), Date.UTC(2026, 4, 30, 23, 0)), // 05-30, 9h
+    sess('b', Date.UTC(2026, 4, 31, 14, 0), Date.UTC(2026, 4, 31, 18, 0)), // 05-31, 4h
+  ];
+  assert.equal(currentStreak(list, 480, Date.UTC(2026, 5, 1, 14, 0)), 0);
+});
+
+test('currentStreak: goal exactly met is inclusive', () => {
+  const list = [sess('a', Date.UTC(2026, 4, 31, 14, 0), Date.UTC(2026, 4, 31, 22, 0))]; // 8h, 05-31
+  assert.equal(currentStreak(list, 480, Date.UTC(2026, 5, 1, 14, 0)), 1);
+});
+
+test('currentStreak: excludes running session', () => {
+  assert.equal(currentStreak([sess('a', Date.UTC(2026, 4, 31, 14, 0), null)], 480, NOW), 0);
+});
+
+test('sanitizeGoal: clamps, rounds to 5, invalid -> default', () => {
+  assert.equal(sanitizeGoal(420), 420);
+  assert.equal(sanitizeGoal(7.3 * 60), 440); // 438 -> 440
+  assert.equal(sanitizeGoal(5), 60);
+  assert.equal(sanitizeGoal(2000), 960);
+  assert.equal(sanitizeGoal('nope'), DEFAULT_GOAL_MIN);
+  assert.equal(sanitizeGoal(-10), DEFAULT_GOAL_MIN);
 });

@@ -151,3 +151,119 @@ export function bedtimeConsistency(sessions, now = Date.now(), windowDays = 7) {
   const variance = mins.reduce((a, b) => a + (b - mean) ** 2, 0) / mins.length;
   return Math.round(Math.sqrt(variance));
 }
+
+// Calendar "night" a timestamp belongs to: the local date of the start time,
+// but a start before noon counts as the PREVIOUS day (1am bedtime = night before).
+// tz-aware via Intl; falls back to device-local for invalid tz strings.
+export function nightDate(ts, tz) {
+  let y, mo, d, h;
+  try {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', hourCycle: 'h23',
+    }).formatToParts(ts);
+    const get = (t) => parts.find((p) => p.type === t)?.value;
+    y = Number(get('year')); mo = Number(get('month')); d = Number(get('day'));
+    h = Number(get('hour')) % 24;
+  } catch {
+    const dt = new Date(ts);
+    y = dt.getFullYear(); mo = dt.getMonth() + 1; d = dt.getDate(); h = dt.getHours();
+  }
+  let base = Date.UTC(y, mo - 1, d);
+  if (h < 12) base -= 24 * 60 * 60 * 1000;
+  const x = new Date(base);
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${x.getUTCFullYear()}-${pad(x.getUTCMonth() + 1)}-${pad(x.getUTCDate())}`;
+}
+
+function prevNightStr(dateStr) {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const x = new Date(Date.UTC(y, m - 1, d) - 24 * 60 * 60 * 1000);
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${x.getUTCFullYear()}-${pad(x.getUTCMonth() + 1)}-${pad(x.getUTCDate())}`;
+}
+
+// Minutes since local midnight in the session's tz (for the drift chart).
+export function timeOfDayMin(ts, tz) {
+  try {
+    const parts = new Intl.DateTimeFormat('en-GB', {
+      timeZone: tz, hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+    }).formatToParts(ts);
+    const h = Number(parts.find((p) => p.type === 'hour')?.value) % 24;
+    const m = Number(parts.find((p) => p.type === 'minute')?.value);
+    return h * 60 + m;
+  } catch {
+    const d = new Date(ts);
+    return d.getHours() * 60 + d.getMinutes();
+  }
+}
+
+// Group COMPLETED sessions by their night date; representative = longest session.
+export function groupByNight(sessions) {
+  const map = new Map();
+  for (const s of sessions) {
+    if (s.endTs == null) continue;
+    const night = nightDate(s.startTs, s.tz);
+    const cur = map.get(night);
+    if (!cur || timeInBedMin(s) > timeInBedMin(cur)) map.set(night, s);
+  }
+  return map;
+}
+
+export function trendSeries(sessions, rangeDays, now = Date.now()) {
+  const cutoff = now - rangeDays * 24 * 60 * 60 * 1000;
+  const inRange = sessions.filter((s) => s.endTs != null && s.startTs >= cutoff);
+  const out = [];
+  for (const [night, s] of groupByNight(inRange)) {
+    out.push({
+      night,
+      timeInBedMin: timeInBedMin(s),
+      totalSleepMin: totalSleepMin(s),
+      efficiency: sleepEfficiency(s),
+      score: sleepScore(s),
+      bedtimeMin: timeOfDayMin(s.startTs, s.tz),
+      wakeMin: timeOfDayMin(s.endTs, s.tz),
+    });
+  }
+  out.sort((a, b) => (a.night < b.night ? -1 : a.night > b.night ? 1 : 0));
+  return out;
+}
+
+export function rangeSummary(sessions, rangeDays, now = Date.now()) {
+  const series = trendSeries(sessions, rangeDays, now);
+  const nightsTracked = series.length;
+  if (nightsTracked === 0) {
+    return { avgTimeInBed: 0, avgEfficiency: null, efficiencyNights: 0, best: null, worst: null, nightsTracked: 0 };
+  }
+  const totalTib = series.reduce((a, s) => a + s.timeInBedMin, 0);
+  const effNights = series.filter((s) => s.efficiency != null);
+  const avgEfficiency = effNights.length === 0 ? null
+    : Math.round(effNights.reduce((a, s) => a + s.efficiency, 0) / effNights.length);
+  let best = series[0], worst = series[0];
+  for (const s of series) {
+    if (s.timeInBedMin > best.timeInBedMin) best = s;
+    if (s.timeInBedMin < worst.timeInBedMin) worst = s;
+  }
+  return { avgTimeInBed: Math.round(totalTib / nightsTracked), avgEfficiency, efficiencyNights: effNights.length, best, worst, nightsTracked };
+}
+
+// Consecutive qualifying nights ending at the most recent tracked night.
+// A not-yet-slept (or in-progress) tonight does NOT reset the streak.
+export function currentStreak(sessions, goalMin, now = Date.now()) {
+  const byNight = groupByNight(sessions);
+  const qualifies = (night) => {
+    const s = byNight.get(night);
+    return s != null && timeInBedMin(s) >= goalMin;
+  };
+  let cursor = nightDate(now); // device-local anchor for "now"
+  if (!qualifies(cursor)) cursor = prevNightStr(cursor);
+  let count = 0;
+  while (qualifies(cursor)) { count++; cursor = prevNightStr(cursor); }
+  return count;
+}
+
+export function sanitizeGoal(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return DEFAULT_GOAL_MIN;
+  return Math.round(clamp(n, 60, 960) / 5) * 5;
+}
