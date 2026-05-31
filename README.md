@@ -38,6 +38,7 @@ All data is in `localStorage` under the single key `sleepToggle.sessions.v1` —
 | `startTs` | number | ms epoch |
 | `endTs` | number \| null | `null` while sleeping |
 | `targetTs` | number \| null | planned wake time (ms epoch); null for v1 sessions |
+| `awakeMin` | number \| null | minutes awake during the night; null = not provided |
 | `tz` | string | IANA tz (e.g. `Asia/Singapore`) or `UTC±HH:MM` |
 | `rating` | number \| null | 1–5 wake rating |
 | `note` | string | wake note, may be empty |
@@ -65,6 +66,23 @@ score = ratingScore == null ? round(durationScore)
 ```
 
 Bands: 85+ Great · 70+ Good · 50+ Fair · else Poor.
+
+### Sleep report (v3)
+
+After waking you see an honest report — real metrics only:
+
+- **Total Sleep Time** = time in bed − minutes awake.
+- **Efficiency** = total sleep ÷ time in bed, shown only when you enter "minutes awake" at the
+  wake check-in (otherwise `—`).
+- **Asleep vs Awake** bar — shown when minutes awake is provided.
+- **Bedtime consistency** = ±std-dev of your bedtime over the last 7 days (needs ≥2 sessions).
+
+**No sleep stages.** Light/Deep/REM can't be measured with a manual toggle, so they are
+deliberately omitted rather than faked.
+
+Score weights: with minutes-awake + rating → `0.5×duration + 0.3×efficiency + 0.2×rating`;
+with minutes-awake only → `0.6×duration + 0.4×efficiency`; without minutes-awake →
+`0.6×duration + 0.4×rating` (or duration only if unrated).
 
 ## CSV export
 

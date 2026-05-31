@@ -10,6 +10,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="Sleep" />
   <link rel="apple-touch-icon" href="icons/icon-192.png" />
+  <link rel="icon" href="icons/icon-192.png" />
   <link rel="manifest" href="manifest.json" />
   <link rel="stylesheet" href="style.css" />
 </head>
@@ -17,44 +18,97 @@
   <main class="app">
     <h1 class="title">Sleep Toggle</h1>
 
-    <section class="status" id="status">
-      <p class="status-line" id="statusLine">Not sleeping</p>
-    </section>
+    <nav class="tabs" id="tabs">
+      <button class="tab active" data-view="home" type="button">Home</button>
+      <button class="tab" data-view="trends" type="button">Trends</button>
+    </nav>
 
-    <section class="night" id="night" hidden>
-      <canvas class="liquid" id="liquid"></canvas>
-      <div class="night-readout">
-        <p class="clock" id="clock">—</p>
-        <p class="countdown" id="countdown">—</p>
-        <p class="alarm" id="alarm">—</p>
-      </div>
-    </section>
+    <div class="view" id="homeView">
+      <section class="status" id="status">
+        <p class="status-line" id="statusLine">Not sleeping</p>
+      </section>
 
-    <button class="primary" id="primaryBtn" type="button">Start Sleep</button>
-
-    <section class="card" id="lastCard" hidden>
-      <h2>Last session</h2>
-      <div class="last-row">
-        <div>
-          <p class="last-duration" id="lastDuration">—</p>
-          <p class="last-times" id="lastTimes">—</p>
+      <section class="night" id="night" hidden>
+        <canvas class="liquid" id="liquid"></canvas>
+        <div class="night-readout">
+          <p class="clock" id="clock">—</p>
+          <p class="countdown" id="countdown">—</p>
+          <p class="alarm" id="alarm">—</p>
         </div>
-        <div class="score" id="scoreBox">
-          <span class="score-num" id="scoreNum">—</span>
-          <span class="score-band" id="scoreBand">—</span>
+      </section>
+
+      <button class="primary" id="primaryBtn" type="button">Start Sleep</button>
+
+      <section class="card" id="lastCard" hidden>
+        <h2>Last session</h2>
+        <div class="last-row">
+          <div>
+            <p class="last-duration" id="lastDuration">—</p>
+            <p class="last-times" id="lastTimes">—</p>
+          </div>
+          <div class="score" id="scoreBox">
+            <span class="score-num" id="scoreNum">—</span>
+            <span class="score-band" id="scoreBand">—</span>
+          </div>
         </div>
+        <dl class="report">
+          <div class="report-item">
+            <dt>Total sleep</dt><dd id="repTst">—</dd>
+          </div>
+          <div class="report-item">
+            <dt>Efficiency</dt><dd id="repEff">—</dd>
+          </div>
+          <div class="report-item">
+            <dt>Bedtime consistency</dt><dd id="repConsistency">—</dd>
+          </div>
+        </dl>
+        <div class="awake-bar" id="awakeBar" hidden>
+          <div class="awake-bar-asleep" id="awakeBarAsleep"></div>
+          <div class="awake-bar-awake" id="awakeBarAwake"></div>
+        </div>
+        <p class="awake-legend" id="awakeLegend" hidden>Asleep vs awake</p>
+      </section>
+
+      <section class="card">
+        <h2>Last 7 days</h2>
+        <p class="stats" id="stats">No completed sessions yet.</p>
+        <ul class="history" id="history"></ul>
+      </section>
+
+      <div class="actions">
+        <button class="secondary" id="editBtn" type="button">Edit last</button>
+        <button class="secondary" id="exportBtn" type="button">Export</button>
       </div>
-    </section>
+    </div>
 
-    <section class="card">
-      <h2>Last 7 days</h2>
-      <p class="stats" id="stats">No completed sessions yet.</p>
-      <ul class="history" id="history"></ul>
-    </section>
+    <div class="view" id="trendsView" hidden>
+      <div class="range-toggle" id="rangeToggle">
+        <button class="range active" data-range="7" type="button">7d</button>
+        <button class="range" data-range="30" type="button">30d</button>
+      </div>
 
-    <div class="actions">
-      <button class="secondary" id="editBtn" type="button">Edit last</button>
-      <button class="secondary" id="exportBtn" type="button">Export</button>
+      <section class="card">
+        <div class="goal-row">
+          <span>Goal: <strong id="goalLabel">8h</strong></span>
+          <button class="link" id="goalEdit" type="button" aria-label="Edit goal">✎</button>
+        </div>
+        <p class="streak" id="streak">🔥 0 nights</p>
+      </section>
+
+      <section class="card">
+        <h2>Summary</h2>
+        <p class="summary" id="trendSummary">No nights tracked yet.</p>
+      </section>
+
+      <section class="card">
+        <h2>Time in bed</h2>
+        <div class="bars" id="durationBars"></div>
+      </section>
+
+      <section class="card">
+        <h2>Bedtime &amp; wake</h2>
+        <div class="drift" id="driftChart"></div>
+      </section>
     </div>
   </main>
 
@@ -81,8 +135,10 @@
         <button type="button" data-rating="4">4</button>
         <button type="button" data-rating="5">5</button>
       </div>
+      <label>Minutes awake (optional)<input type="number" id="wakeAwake" min="0" inputmode="numeric" placeholder="e.g. 20" /></label>
       <textarea id="wakeNote" placeholder="Optional note…" rows="3"></textarea>
       <menu class="dialog-actions">
+        <button value="skip" type="button" id="wakeSkip">Skip</button>
         <button value="save" id="wakeSave">Save</button>
       </menu>
     </form>
@@ -98,6 +154,18 @@
       <menu class="dialog-actions">
         <button value="cancel" type="button" id="editCancel">Cancel</button>
         <button value="save" id="editSave">Save</button>
+      </menu>
+    </form>
+  </dialog>
+
+  <!-- Goal dialog -->
+  <dialog id="goalDialog">
+    <form method="dialog" class="dialog-form">
+      <h2>Sleep goal</h2>
+      <label>Target hours<input type="number" id="goalHours" min="1" max="16" step="0.5" inputmode="decimal" /></label>
+      <menu class="dialog-actions">
+        <button value="cancel" type="button" id="goalCancel">Cancel</button>
+        <button value="save" id="goalSave">Save</button>
       </menu>
     </form>
   </dialog>

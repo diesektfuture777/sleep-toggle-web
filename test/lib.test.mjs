@@ -13,6 +13,13 @@ import {
   sleepScore,
   scoreBand,
   DEFAULT_GOAL_MIN,
+  nightDate,
+  timeOfDayMin,
+  groupByNight,
+  trendSeries,
+  rangeSummary,
+  currentStreak,
+  sanitizeGoal,
 } from '../lib.js';
 
 test('formatDuration formats h/m', () => {
@@ -98,39 +105,51 @@ test('formatTimeLeft: singular hour, minutes only, and past', () => {
   assert.equal(formatTimeLeft(-5000), 'Past wake time');
 });
 
-test('sleepScore: met goal + top rating = 100', () => {
-  const startTs = 0;
-  const targetTs = 8 * 60 * 60 * 1000;     // 8h planned
-  const endTs = 8 * 60 * 60 * 1000;        // slept exactly 8h
-  assert.equal(sleepScore({ startTs, endTs, targetTs, rating: 5 }), 100);
+// score branches: durationScore uses TST vs planned (targetTs-startTs, else 480)
+test('sleepScore: eff+rating branch (0.5 dur + 0.3 eff + 0.2 rating)', () => {
+  const startTs = 0, targetTs = 8 * 60 * 60 * 1000, endTs = 8 * 60 * 60 * 1000; // planned 8h, TIB 8h
+  // awakeMin 0 -> TST 8h -> dur 100, eff 100; rating 5 -> 100 => 100
+  assert.equal(sleepScore({ startTs, endTs, targetTs, awakeMin: 0, rating: 5 }), 100);
+  // awakeMin 240 -> TST 4h -> dur 50, eff 50; rating 5 -> 100 => 0.5*50+0.3*50+0.2*100=60
+  assert.equal(sleepScore({ startTs, endTs, targetTs, awakeMin: 240, rating: 5 }), 60);
 });
 
-test('sleepScore: under goal blends duration + rating', () => {
-  const startTs = 0;
-  const targetTs = 8 * 60 * 60 * 1000;     // planned 8h
-  const endTs = 4 * 60 * 60 * 1000;        // slept 4h -> durationScore 50
-  // rating 5 -> ratingScore 100; 0.6*50 + 0.4*100 = 70
-  assert.equal(sleepScore({ startTs, endTs, targetTs, rating: 5 }), 70);
+test('sleepScore: eff, no rating (0.6 dur + 0.4 eff)', () => {
+  const startTs = 0, targetTs = 8 * 60 * 60 * 1000, endTs = 8 * 60 * 60 * 1000;
+  // awakeMin 240 -> dur 50, eff 50 => 50
+  assert.equal(sleepScore({ startTs, endTs, targetTs, awakeMin: 240, rating: null }), 50);
 });
 
-test('sleepScore: no rating uses duration only', () => {
-  const startTs = 0;
-  const targetTs = 10 * 60 * 60 * 1000;    // planned 10h
-  const endTs = 5 * 60 * 60 * 1000;        // slept 5h -> 50
-  assert.equal(sleepScore({ startTs, endTs, targetTs, rating: null }), 50);
+test('sleepScore: no awake, rating -> v2 formula (0.6 dur + 0.4 rating)', () => {
+  const startTs = 0, targetTs = 8 * 60 * 60 * 1000, endTs = 4 * 60 * 60 * 1000; // dur 50
+  // rating 5 -> 100 => 0.6*50 + 0.4*100 = 70
+  assert.equal(sleepScore({ startTs, endTs, targetTs, awakeMin: null, rating: 5 }), 70);
+});
+
+test('sleepScore: no awake, no rating -> duration only', () => {
+  const startTs = 0, targetTs = 8 * 60 * 60 * 1000, endTs = 4 * 60 * 60 * 1000; // dur 50
+  assert.equal(sleepScore({ startTs, endTs, targetTs, awakeMin: null, rating: null }), 50);
 });
 
 test('sleepScore: no target falls back to 8h default goal', () => {
-  const startTs = 0;
-  const endTs = 4 * 60 * 60 * 1000;        // 4h of 8h default -> 50, no rating
-  assert.equal(sleepScore({ startTs, endTs, targetTs: null, rating: null }), 50);
+  const startTs = 0, endTs = 4 * 60 * 60 * 1000; // 4h of default 8h -> dur 50
+  assert.equal(sleepScore({ startTs, endTs, targetTs: null, awakeMin: null, rating: null }), 50);
 });
 
 test('sleepScore: oversleep caps duration at 100', () => {
-  const startTs = 0;
-  const targetTs = 6 * 60 * 60 * 1000;     // planned 6h
-  const endTs = 9 * 60 * 60 * 1000;        // slept 9h -> capped 100
-  assert.equal(sleepScore({ startTs, endTs, targetTs, rating: null }), 100);
+  // planned 6h, slept 9h, no awake -> TST 9h, dur capped 100; eff 100 => 100
+  const startTs = 0, targetTs = 6 * 60 * 60 * 1000, endTs = 9 * 60 * 60 * 1000;
+  assert.equal(sleepScore({ startTs, endTs, targetTs, awakeMin: 0, rating: null }), 100);
+});
+
+test('sleepScore: awake >= time-in-bed => no sleep => 0', () => {
+  // TIB 8h, awake 999 clamped to 480 -> TST 0 -> dur 0, eff 0 -> 0
+  const startTs = 0, targetTs = 8 * 60 * 60 * 1000, endTs = 8 * 60 * 60 * 1000;
+  assert.equal(sleepScore({ startTs, endTs, targetTs, awakeMin: 999, rating: null }), 0);
+});
+
+test('sleepScore: null for running session', () => {
+  assert.equal(sleepScore({ startTs: 0, endTs: null, targetTs: 8 * 60 * 60 * 1000 }), null);
 });
 
 test('scoreBand boundaries', () => {
@@ -140,4 +159,186 @@ test('scoreBand boundaries', () => {
   assert.equal(scoreBand(69), 'Fair');
   assert.equal(scoreBand(50), 'Fair');
   assert.equal(scoreBand(49), 'Poor');
+});
+
+import {
+  timeInBedMin, sanitizeAwake, totalSleepMin, sleepEfficiency, bedtimeConsistency,
+} from '../lib.js';
+
+const H = 60 * 60 * 1000;
+
+test('timeInBedMin = minutes between start and end', () => {
+  assert.equal(timeInBedMin({ startTs: 0, endTs: 8 * H }), 480);
+});
+
+test('sanitizeAwake: null/invalid/negative -> null; clamps to TIB', () => {
+  assert.equal(sanitizeAwake(null, 480), null);
+  assert.equal(sanitizeAwake('x', 480), null);
+  assert.equal(sanitizeAwake(-5, 480), null);
+  assert.equal(sanitizeAwake(30, 480), 30);
+  assert.equal(sanitizeAwake(600, 480), 480); // clamp to time in bed
+  assert.equal(sanitizeAwake(0, 480), 0);      // 0 is a real value, not null
+});
+
+test('totalSleepMin subtracts awake; equals TIB when unknown', () => {
+  assert.equal(totalSleepMin({ startTs: 0, endTs: 8 * H, awakeMin: 60 }), 420);
+  assert.equal(totalSleepMin({ startTs: 0, endTs: 8 * H, awakeMin: null }), 480);
+  assert.equal(totalSleepMin({ startTs: 0, endTs: 8 * H }), 480); // missing field
+});
+
+test('sleepEfficiency: null when awake unknown, else rounded %', () => {
+  assert.equal(sleepEfficiency({ startTs: 0, endTs: 8 * H, awakeMin: null }), null);
+  assert.equal(sleepEfficiency({ startTs: 0, endTs: 8 * H, awakeMin: 0 }), 100);
+  assert.equal(sleepEfficiency({ startTs: 0, endTs: 8 * H, awakeMin: 60 }), 88); // 420/480
+  assert.equal(sleepEfficiency({ startTs: 0, endTs: 8 * H, awakeMin: 600 }), 0); // clamped
+});
+
+test('bedtimeConsistency: null with <2 sessions', () => {
+  assert.equal(bedtimeConsistency([], Date.now()), null);
+  assert.equal(bedtimeConsistency([{ startTs: Date.now(), endTs: Date.now() + H }], Date.now()), null);
+});
+
+test('bedtimeConsistency: std dev of bedtimes in minutes (handles past-midnight)', () => {
+  // Two bedtimes: 23:00 and 01:00 -> 120 min apart -> stddev 60 (population)
+  const day = 24 * H;
+  const now = new Date('2026-05-31T12:00:00').getTime();
+  const b1 = new Date('2026-05-30T23:00:00').getTime();
+  const b2 = new Date('2026-05-31T01:00:00').getTime();
+  const sessions = [
+    { startTs: b1, endTs: b1 + 7 * H },
+    { startTs: b2, endTs: b2 + 7 * H },
+  ];
+  assert.equal(bedtimeConsistency(sessions, now), 60);
+  // sessions older than 7 days are ignored
+  const old = { startTs: now - 9 * day, endTs: now - 9 * day + 7 * H };
+  assert.equal(bedtimeConsistency([...sessions, old], now), 60);
+});
+
+// ---------- v4: trends + goal/streak ----------
+
+const sess = (id, startUTC, endUTC, extra = {}) => ({
+  id, startTs: startUTC, endTs: endUTC, tz: 'Asia/Singapore', awakeMin: null, ...extra,
+});
+const NOW = Date.UTC(2026, 5, 1, 4, 0); // 2026-06-01 12:00 SGT
+
+test('nightDate: after-noon start keeps same calendar date', () => {
+  assert.equal(nightDate(Date.UTC(2026, 4, 31, 14, 0), 'Asia/Singapore'), '2026-05-31'); // 22:00 SGT
+});
+
+test('nightDate: before-noon start shifts to previous day', () => {
+  assert.equal(nightDate(Date.UTC(2026, 4, 31, 17, 0), 'Asia/Singapore'), '2026-05-31'); // 01:00 SGT next day
+});
+
+test('nightDate: boundary 11:59 shifts back, 12:00 stays', () => {
+  assert.equal(nightDate(Date.UTC(2026, 4, 31, 3, 59), 'Asia/Singapore'), '2026-05-30'); // 11:59 SGT
+  assert.equal(nightDate(Date.UTC(2026, 4, 31, 4, 0), 'Asia/Singapore'), '2026-05-31');  // 12:00 SGT
+});
+
+test('nightDate: midnight 00:00 shifts to previous day', () => {
+  assert.equal(nightDate(Date.UTC(2026, 4, 31, 16, 0), 'Asia/Singapore'), '2026-05-31'); // 00:00 SGT next day
+});
+
+test('nightDate: invalid tz falls back without throwing', () => {
+  const ts = Date.UTC(2026, 4, 31, 14, 0);
+  assert.doesNotThrow(() => nightDate(ts, 'UTC+08:00'));
+  assert.match(nightDate(ts, 'UTC+08:00'), /^\d{4}-\d{2}-\d{2}$/);
+});
+
+test('timeOfDayMin: tz-aware minutes since local midnight', () => {
+  assert.equal(timeOfDayMin(Date.UTC(2026, 4, 31, 14, 30), 'Asia/Singapore'), 22 * 60 + 30);
+});
+
+test('timeOfDayMin: invalid tz falls back without throwing', () => {
+  assert.doesNotThrow(() => timeOfDayMin(Date.UTC(2026, 4, 31, 14, 30), 'UTC+08:00'));
+});
+
+test('groupByNight: excludes running sessions', () => {
+  assert.equal(groupByNight([sess('a', Date.UTC(2026, 4, 31, 14, 0), null)]).size, 0);
+});
+
+test('groupByNight: same night keeps the longer session', () => {
+  const short = sess('s', Date.UTC(2026, 4, 31, 14, 0), Date.UTC(2026, 4, 31, 15, 0)); // 1h
+  const long = sess('l', Date.UTC(2026, 4, 31, 15, 0), Date.UTC(2026, 4, 31, 21, 0));  // 6h
+  const m = groupByNight([short, long]);
+  assert.equal(m.size, 1);
+  assert.equal(m.get('2026-05-31').id, 'l');
+});
+
+test('trendSeries: chronological, gaps absent, efficiency null when awake unknown', () => {
+  const list = [
+    sess('n1', Date.UTC(2026, 4, 30, 14, 0), Date.UTC(2026, 4, 30, 22, 0)), // 05-30, 8h
+    sess('n2', Date.UTC(2026, 4, 31, 14, 0), Date.UTC(2026, 4, 31, 20, 0)), // 05-31, 6h
+  ];
+  const s = trendSeries(list, 7, NOW);
+  assert.equal(s.length, 2);
+  assert.deepEqual(s.map((x) => x.night), ['2026-05-30', '2026-05-31']);
+  assert.equal(s[0].efficiency, null);
+  assert.equal(s[1].timeInBedMin, 360);
+});
+
+test('trendSeries: all-untracked range returns empty', () => {
+  assert.deepEqual(trendSeries([], 7, NOW), []);
+});
+
+test('rangeSummary: efficiency only over real-awake nights + count', () => {
+  const list = [
+    sess('n1', Date.UTC(2026, 4, 30, 14, 0), Date.UTC(2026, 4, 30, 22, 0), { awakeMin: 60 }),
+    sess('n2', Date.UTC(2026, 4, 31, 14, 0), Date.UTC(2026, 4, 31, 20, 0)),
+  ];
+  const r = rangeSummary(list, 7, NOW);
+  assert.equal(r.nightsTracked, 2);
+  assert.equal(r.efficiencyNights, 1);
+  assert.notEqual(r.avgEfficiency, null);
+  assert.equal(r.best.timeInBedMin, 480);
+  assert.equal(r.worst.timeInBedMin, 360);
+});
+
+test('rangeSummary: empty range => zeros and null efficiency', () => {
+  const r = rangeSummary([], 7, NOW);
+  assert.equal(r.nightsTracked, 0);
+  assert.equal(r.avgEfficiency, null);
+  assert.equal(r.best, null);
+});
+
+test('currentStreak: gap on most recent night breaks immediately', () => {
+  const list = [
+    sess('a', Date.UTC(2026, 4, 29, 14, 0), Date.UTC(2026, 4, 29, 23, 0)), // 05-29, 9h
+    sess('b', Date.UTC(2026, 4, 30, 14, 0), Date.UTC(2026, 4, 30, 23, 0)), // 05-30, 9h
+  ];
+  assert.equal(currentStreak(list, 480, NOW), 0); // 05-31 untracked, anchor 06-01
+});
+
+test('currentStreak: unlogged tonight does not reset prior run', () => {
+  const list = [
+    sess('a', Date.UTC(2026, 4, 30, 14, 0), Date.UTC(2026, 4, 30, 23, 0)), // 05-30, 9h
+    sess('b', Date.UTC(2026, 4, 31, 14, 0), Date.UTC(2026, 4, 31, 23, 0)), // 05-31, 9h
+  ];
+  const now = Date.UTC(2026, 5, 1, 14, 0); // 06-01 22:00 SGT, tonight not logged
+  assert.equal(currentStreak(list, 480, now), 2);
+});
+
+test('currentStreak: below-goal most-recent night breaks', () => {
+  const list = [
+    sess('a', Date.UTC(2026, 4, 30, 14, 0), Date.UTC(2026, 4, 30, 23, 0)), // 05-30, 9h
+    sess('b', Date.UTC(2026, 4, 31, 14, 0), Date.UTC(2026, 4, 31, 18, 0)), // 05-31, 4h
+  ];
+  assert.equal(currentStreak(list, 480, Date.UTC(2026, 5, 1, 14, 0)), 0);
+});
+
+test('currentStreak: goal exactly met is inclusive', () => {
+  const list = [sess('a', Date.UTC(2026, 4, 31, 14, 0), Date.UTC(2026, 4, 31, 22, 0))]; // 8h, 05-31
+  assert.equal(currentStreak(list, 480, Date.UTC(2026, 5, 1, 14, 0)), 1);
+});
+
+test('currentStreak: excludes running session', () => {
+  assert.equal(currentStreak([sess('a', Date.UTC(2026, 4, 31, 14, 0), null)], 480, NOW), 0);
+});
+
+test('sanitizeGoal: clamps, rounds to 5, invalid -> default', () => {
+  assert.equal(sanitizeGoal(420), 420);
+  assert.equal(sanitizeGoal(7.3 * 60), 440); // 438 -> 440
+  assert.equal(sanitizeGoal(5), 60);
+  assert.equal(sanitizeGoal(2000), 960);
+  assert.equal(sanitizeGoal('nope'), DEFAULT_GOAL_MIN);
+  assert.equal(sanitizeGoal(-10), DEFAULT_GOAL_MIN);
 });

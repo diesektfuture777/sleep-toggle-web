@@ -3,8 +3,7 @@
   --card: #15151d;
   --text: #f2f2f7;
   --muted: #9a9aa8;
-  --accent: #ff6a00;
-  --accent-dim: #7a3300;
+  --accent: #7c5cff;
   --night-accent: #b89bff;
   --night-btn: #5a49c8;
   --danger: #ff453a;
@@ -37,7 +36,6 @@ body {
 .status { text-align: center; }
 .status-line { font-size: 18px; color: var(--muted); margin: 0; }
 .status.sleeping .status-line { color: var(--night-accent); }
-.elapsed { font-size: 34px; font-weight: 700; margin: 6px 0 0; font-variant-numeric: tabular-nums; }
 
 .primary {
   width: 100%;
@@ -167,3 +165,40 @@ dialog::backdrop { background: rgba(0,0,0,0.6); }
 .score-num { font-size: 34px; font-weight: 700; line-height: 1; color: var(--accent); font-variant-numeric: tabular-nums; }
 .score-band { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin-top: 2px; }
 .history li .score-mini { color: var(--accent); font-weight: 600; margin-left: 10px; }
+
+/* ---- Sleep report ---- */
+.report { display: flex; gap: 10px; margin: 14px 0 0; padding: 0; }
+.report-item { flex: 1; }
+.report dt { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+.report dd { margin: 4px 0 0; font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+.awake-bar { display: flex; height: 10px; border-radius: 6px; overflow: hidden; margin-top: 14px; background: #2a2a36; }
+.awake-bar-asleep { background: var(--accent); }
+.awake-bar-awake { background: #3a3a48; }
+.awake-legend { font-size: 11px; color: var(--muted); margin: 6px 0 0; text-transform: uppercase; letter-spacing: 0.06em; }
+
+/* ---------- v4: tabs + trends ---------- */
+.tabs { display: flex; gap: 8px; justify-content: center; margin: 4px 0 16px; }
+.tab { flex: 1; padding: 11px; border-radius: 12px; background: var(--card); color: var(--muted); border: none; font: inherit; font-weight: 600; cursor: pointer; }
+.tab.active { background: var(--accent); color: #fff; }
+.view[hidden] { display: none; }
+
+.range-toggle { display: flex; gap: 6px; justify-content: flex-end; margin-bottom: 12px; }
+.range { padding: 6px 14px; border-radius: 9px; background: var(--card); color: var(--muted); border: none; font: inherit; cursor: pointer; }
+.range.active { background: var(--accent); color: #fff; }
+
+.goal-row { display: flex; justify-content: space-between; align-items: center; }
+.link { background: none; border: none; color: var(--accent); font-size: 1.15rem; cursor: pointer; padding: 0 4px; }
+.streak { margin: 10px 0 0; font-size: 1.15rem; font-weight: 600; }
+.summary { line-height: 1.55; margin: 0; }
+
+.bars { display: flex; align-items: flex-end; gap: 4px; height: 120px; position: relative; padding-top: 4px; }
+.bars .bar { flex: 1; background: var(--accent); border-radius: 5px 5px 0 0; min-height: 2px; opacity: 0.4; }
+.bars .bar.hit { opacity: 1; }
+.bars .goal-line { position: absolute; left: 0; right: 0; border-top: 1px dashed var(--night-accent); pointer-events: none; }
+
+.drift svg { width: 100%; height: 140px; display: block; }
+.drift .dot-bed { fill: var(--night-accent); }
+.drift .dot-wake { fill: var(--accent); }
+.drift .link-seg { stroke: #3a3a48; stroke-width: 1.5; }
+.drift:empty::after, .drift > :not(svg) { color: var(--muted); font-size: 14px; }

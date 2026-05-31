@@ -1,4 +1,4 @@
-const CACHE = 'sleep-toggle-v4';
+const CACHE = 'sleep-toggle-dev';
 const ASSETS = [
   './',
   './index.html',
