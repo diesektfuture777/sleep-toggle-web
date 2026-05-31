@@ -3,6 +3,7 @@ import {
   validateEnd, sessionsToCsv, recentStats, formatTimeLeft, sleepScore, scoreBand,
   totalSleepMin, timeInBedMin, sleepEfficiency, bedtimeConsistency, sanitizeAwake,
   DEFAULT_GOAL_MIN, trendSeries, rangeSummary, currentStreak, sanitizeGoal,
+  ratingLabel, BADGES, badgesFor, earnedBadges, sleepDebt, brainDumpVisible,
 } from './lib.js';
 import * as liquid from './liquid.js';
 
@@ -32,6 +33,14 @@ function loadSettings() {
 function saveSettings(s) {
   localStorage.setItem(SETTINGS_KEY, JSON.stringify(s));
 }
+const BRAIN_KEY = 'sleepToggle.brainDump.v1';
+function loadBrainDump() {
+  try { return JSON.parse(localStorage.getItem(BRAIN_KEY) || 'null'); } catch { return null; }
+}
+function saveBrainDump(text) {
+  localStorage.setItem(BRAIN_KEY, JSON.stringify({ text, createdAt: Date.now() }));
+}
+function clearBrainDump() { localStorage.removeItem(BRAIN_KEY); }
 
 function tzLabel() {
   try {
@@ -84,6 +93,12 @@ const els = {
   durationBars: $('durationBars'), driftChart: $('driftChart'),
   goalDialog: $('goalDialog'), goalHours: $('goalHours'),
   goalCancel: $('goalCancel'), goalSave: $('goalSave'),
+  repRating: $('repRating'), lastBadges: $('lastBadges'),
+  sleepDebt: $('sleepDebt'), badgeShelf: $('badgeShelf'),
+  brainDumpBtn: $('brainDumpBtn'), brainDumpCard: $('brainDumpCard'),
+  brainDumpReveal: $('brainDumpReveal'), brainDumpClear: $('brainDumpClear'),
+  brainDumpDialog: $('brainDumpDialog'), brainDumpText: $('brainDumpText'),
+  brainDumpCancel: $('brainDumpCancel'), brainDumpSave: $('brainDumpSave'),
 };
 
 // ---------- helpers ----------
@@ -170,6 +185,8 @@ function render() {
     const consistency = bedtimeConsistency(sessions, Date.now());
     els.repConsistency.textContent = consistency == null ? '—' : `±${consistency} min`;
 
+    els.repRating.textContent = ratingLabel(last.rating);
+
     const tib = timeInBedMin(last);
     const awake = sanitizeAwake(last.awakeMin, tib);
     if (awake != null && tib > 0) {
@@ -181,6 +198,14 @@ function render() {
     } else {
       els.awakeBar.hidden = true;
       els.awakeLegend.hidden = true;
+    }
+
+    els.lastBadges.innerHTML = '';
+    for (const b of badgesFor(last)) {
+      const tag = document.createElement('span');
+      tag.className = 'badge-tag';
+      tag.textContent = `${b.emoji} ${b.phrase}`;
+      els.lastBadges.appendChild(tag);
     }
   } else {
     els.lastCard.hidden = true;
@@ -204,13 +229,28 @@ function render() {
     const sc = document.createElement('span');
     sc.className = 'score-mini';
     sc.textContent = sleepScore(s);
+    const bs = document.createElement('span');
+    bs.className = 'hist-badges';
+    bs.textContent = badgesFor(s).map((b) => b.emoji).join('');
     const right = document.createElement('span');
-    right.append(dur, sc);
+    right.append(dur, sc, bs);
     li.append(when, right);
     els.history.appendChild(li);
   }
 
   els.edit.disabled = lastCompleted() === null;
+
+  renderBrainDump();
+}
+
+function renderBrainDump() {
+  const dump = loadBrainDump();
+  if (brainDumpVisible(dump, Date.now())) {
+    els.brainDumpReveal.textContent = dump.text;
+    els.brainDumpCard.hidden = false;
+  } else {
+    els.brainDumpCard.hidden = true;
+  }
 }
 
 function startNight(session) {
@@ -394,6 +434,27 @@ function renderTrends() {
   const n = currentStreak(sessions, goalMin, Date.now());
   els.streak.textContent = `🔥 ${n} night${n === 1 ? '' : 's'} ≥${goalHoursLabel(goalMin)}`;
 
+  const debt = sleepDebt(sessions, goalMin, currentRange, Date.now());
+  els.sleepDebt.textContent = debt.nightsCounted === 0
+    ? 'Sleep debt: —'
+    : debt.debtMin === 0
+      ? 'Sleep debt: on track'
+      : `Sleep debt: ${formatDuration(debt.debtMin)} · ${debt.nightsCounted} night${debt.nightsCounted === 1 ? '' : 's'}`;
+
+  const earned = earnedBadges(sessions);
+  els.badgeShelf.innerHTML = '';
+  for (const [key, b] of Object.entries(BADGES)) {
+    const li = document.createElement('li');
+    if (earned.has(key)) li.className = 'earned';
+    const label = document.createElement('span');
+    label.textContent = `${b.emoji} ${b.name}`;
+    const mark = document.createElement('span');
+    mark.className = 'mark';
+    mark.textContent = earned.has(key) ? '✓' : '—';
+    li.append(label, mark);
+    els.badgeShelf.appendChild(li);
+  }
+
   const series = trendSeries(sessions, currentRange, Date.now());
   const sum = rangeSummary(sessions, currentRange, Date.now());
 
@@ -484,6 +545,20 @@ els.goalSave.addEventListener('click', (e) => {
   els.goalDialog.close();
   renderTrends();
 });
+els.brainDumpBtn.addEventListener('click', () => {
+  const dump = loadBrainDump();
+  els.brainDumpText.value = (dump && dump.text) || '';
+  els.brainDumpDialog.showModal();
+});
+els.brainDumpCancel.addEventListener('click', () => els.brainDumpDialog.close());
+els.brainDumpSave.addEventListener('click', (e) => {
+  e.preventDefault();
+  const text = els.brainDumpText.value.trim();
+  if (text) saveBrainDump(text); else clearBrainDump();
+  els.brainDumpDialog.close();
+  render();
+});
+els.brainDumpClear.addEventListener('click', () => { clearBrainDump(); render(); });
 
 render();
 

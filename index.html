@@ -38,6 +38,13 @@
       </section>
 
       <button class="primary" id="primaryBtn" type="button">Start Sleep</button>
+      <button class="secondary brain-btn" id="brainDumpBtn" type="button">🧠 Clear Your Mind</button>
+
+      <section class="card brain-card" id="brainDumpCard" hidden>
+        <h2>🧠 From before bed</h2>
+        <p class="brain-reveal" id="brainDumpReveal"></p>
+        <button class="secondary" id="brainDumpClear" type="button">Clear</button>
+      </section>
 
       <section class="card" id="lastCard" hidden>
         <h2>Last session</h2>
@@ -61,12 +68,16 @@
           <div class="report-item">
             <dt>Bedtime consistency</dt><dd id="repConsistency">—</dd>
           </div>
+          <div class="report-item">
+            <dt>Rating</dt><dd id="repRating">—</dd>
+          </div>
         </dl>
         <div class="awake-bar" id="awakeBar" hidden>
           <div class="awake-bar-asleep" id="awakeBarAsleep"></div>
           <div class="awake-bar-awake" id="awakeBarAwake"></div>
         </div>
         <p class="awake-legend" id="awakeLegend" hidden>Asleep vs awake</p>
+        <div class="badges" id="lastBadges"></div>
       </section>
 
       <section class="card">
@@ -93,6 +104,7 @@
           <button class="link" id="goalEdit" type="button" aria-label="Edit goal">✎</button>
         </div>
         <p class="streak" id="streak">🔥 0 nights</p>
+        <p class="debt" id="sleepDebt">Sleep debt: —</p>
       </section>
 
       <section class="card">
@@ -108,6 +120,11 @@
       <section class="card">
         <h2>Bedtime &amp; wake</h2>
         <div class="drift" id="driftChart"></div>
+      </section>
+
+      <section class="card">
+        <h2>Badges</h2>
+        <ul class="shelf" id="badgeShelf"></ul>
       </section>
     </div>
   </main>
@@ -129,11 +146,11 @@
     <form method="dialog" class="dialog-form">
       <h2>How did you sleep?</h2>
       <div class="rating" id="ratingRow">
-        <button type="button" data-rating="1">1</button>
-        <button type="button" data-rating="2">2</button>
-        <button type="button" data-rating="3">3</button>
-        <button type="button" data-rating="4">4</button>
-        <button type="button" data-rating="5">5</button>
+        <button type="button" data-rating="5">Excellent</button>
+        <button type="button" data-rating="4">Good</button>
+        <button type="button" data-rating="3">Fair</button>
+        <button type="button" data-rating="2">Poor</button>
+        <button type="button" data-rating="1">Very Poor</button>
       </div>
       <label>Minutes awake (optional)<input type="number" id="wakeAwake" min="0" inputmode="numeric" placeholder="e.g. 20" /></label>
       <textarea id="wakeNote" placeholder="Optional note…" rows="3"></textarea>
@@ -154,6 +171,18 @@
       <menu class="dialog-actions">
         <button value="cancel" type="button" id="editCancel">Cancel</button>
         <button value="save" id="editSave">Save</button>
+      </menu>
+    </form>
+  </dialog>
+
+  <!-- Brain dump dialog -->
+  <dialog id="brainDumpDialog">
+    <form method="dialog" class="dialog-form">
+      <h2>Clear your mind</h2>
+      <textarea id="brainDumpText" rows="5" placeholder="Tomorrow's to-dos, racing thoughts… hidden until morning."></textarea>
+      <menu class="dialog-actions">
+        <button value="cancel" type="button" id="brainDumpCancel">Cancel</button>
+        <button value="save" id="brainDumpSave">Save</button>
       </menu>
     </form>
   </dialog>
