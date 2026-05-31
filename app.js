@@ -546,15 +546,14 @@ els.goalSave.addEventListener('click', (e) => {
   renderTrends();
 });
 els.brainDumpBtn.addEventListener('click', () => {
-  const dump = loadBrainDump();
-  els.brainDumpText.value = (dump && dump.text) || '';
+  els.brainDumpText.value = ''; // always blank — the note stays hidden until morning
   els.brainDumpDialog.showModal();
 });
 els.brainDumpCancel.addEventListener('click', () => els.brainDumpDialog.close());
 els.brainDumpSave.addEventListener('click', (e) => {
   e.preventDefault();
   const text = els.brainDumpText.value.trim();
-  if (text) saveBrainDump(text); else clearBrainDump();
+  if (text) saveBrainDump(text); // empty save = no-op, never wipes a hidden note
   els.brainDumpDialog.close();
   render();
 });
