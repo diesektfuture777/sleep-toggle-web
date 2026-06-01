@@ -3,7 +3,7 @@ import {
   validateEnd, sessionsToCsv, recentStats, formatTimeLeft, sleepScore, scoreBand,
   totalSleepMin, timeInBedMin, sleepEfficiency, bedtimeConsistency, sanitizeAwake,
   DEFAULT_GOAL_MIN, trendSeries, rangeSummary, currentStreak, sanitizeGoal,
-  ratingLabel, BADGES, badgesFor, earnedBadges, sleepDebt, brainDumpVisible,
+  ratingLabel, BADGES, badgesFor, earnedBadges, sleepDebt, brainDumpVisible, pendingReveal,
 } from './lib.js';
 import * as liquid from './liquid.js';
 
@@ -33,14 +33,36 @@ function loadSettings() {
 function saveSettings(s) {
   localStorage.setItem(SETTINGS_KEY, JSON.stringify(s));
 }
-const BRAIN_KEY = 'sleepToggle.brainDump.v1';
-function loadBrainDump() {
-  try { return JSON.parse(localStorage.getItem(BRAIN_KEY) || 'null'); } catch { return null; }
+const BRAIN_KEY = 'sleepToggle.brainDumps.v1';      // array of {id, text, createdAt, seen}
+const BRAIN_KEY_OLD = 'sleepToggle.brainDump.v1';   // legacy single {text, createdAt}
+function loadBrainDumps() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(BRAIN_KEY) || 'null');
+    if (Array.isArray(raw)) return raw;
+  } catch {}
+  try { // one-time migration of the legacy single note
+    const old = JSON.parse(localStorage.getItem(BRAIN_KEY_OLD) || 'null');
+    if (old && old.text) {
+      const migrated = [{ id: newId(), text: old.text, createdAt: old.createdAt, seen: false }];
+      localStorage.setItem(BRAIN_KEY, JSON.stringify(migrated));
+      localStorage.removeItem(BRAIN_KEY_OLD);
+      return migrated;
+    }
+  } catch {}
+  return [];
 }
-function saveBrainDump(text) {
-  localStorage.setItem(BRAIN_KEY, JSON.stringify({ text, createdAt: Date.now() }));
+function saveBrainDumps(list) { localStorage.setItem(BRAIN_KEY, JSON.stringify(list)); }
+function addBrainDump(text) {
+  const list = loadBrainDumps();
+  list.push({ id: newId(), text, createdAt: Date.now(), seen: false });
+  saveBrainDumps(list);
 }
-function clearBrainDump() { localStorage.removeItem(BRAIN_KEY); }
+function deleteBrainDump(id) { saveBrainDumps(loadBrainDumps().filter((d) => d.id !== id)); }
+function markBrainDumpSeen(id) {
+  const list = loadBrainDumps();
+  const e = list.find((d) => d.id === id);
+  if (e) { e.seen = true; saveBrainDumps(list); }
+}
 
 function tzLabel() {
   try {
@@ -99,6 +121,7 @@ const els = {
   brainDumpReveal: $('brainDumpReveal'), brainDumpClear: $('brainDumpClear'),
   brainDumpDialog: $('brainDumpDialog'), brainDumpText: $('brainDumpText'),
   brainDumpCancel: $('brainDumpCancel'), brainDumpSave: $('brainDumpSave'),
+  brainDumpList: $('brainDumpList'),
 };
 
 // ---------- helpers ----------
@@ -244,12 +267,44 @@ function render() {
 }
 
 function renderBrainDump() {
-  const dump = loadBrainDump();
-  if (brainDumpVisible(dump, Date.now())) {
-    els.brainDumpReveal.textContent = dump.text;
+  const reveal = pendingReveal(loadBrainDumps(), Date.now());
+  if (reveal) {
+    els.brainDumpReveal.textContent = reveal.text;
+    els.brainDumpCard.dataset.id = reveal.id;
     els.brainDumpCard.hidden = false;
   } else {
     els.brainDumpCard.hidden = true;
+    delete els.brainDumpCard.dataset.id;
+  }
+}
+
+// History list inside the dialog — prior-day entries only (tonight's stays hidden).
+function renderBrainDumpList() {
+  const visible = loadBrainDumps()
+    .filter((d) => brainDumpVisible(d, Date.now()))
+    .sort((a, b) => b.createdAt - a.createdAt);
+  els.brainDumpList.innerHTML = '';
+  if (visible.length === 0) return;
+  const title = document.createElement('h3');
+  title.className = 'dump-history-title';
+  title.textContent = 'Past notes';
+  els.brainDumpList.appendChild(title);
+  for (const d of visible) {
+    const item = document.createElement('div');
+    item.className = 'dump-item';
+    const meta = document.createElement('p');
+    meta.className = 'dump-date';
+    meta.textContent = new Date(d.createdAt).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
+    const body = document.createElement('p');
+    body.className = 'dump-body';
+    body.textContent = d.text;
+    const del = document.createElement('button');
+    del.type = 'button';
+    del.className = 'dump-del';
+    del.dataset.id = d.id;
+    del.textContent = '✕';
+    item.append(meta, body, del);
+    els.brainDumpList.appendChild(item);
   }
 }
 
@@ -546,18 +601,30 @@ els.goalSave.addEventListener('click', (e) => {
   renderTrends();
 });
 els.brainDumpBtn.addEventListener('click', () => {
-  els.brainDumpText.value = ''; // always blank — the note stays hidden until morning
+  els.brainDumpText.value = '';   // always blank — tonight's note stays hidden until morning
+  renderBrainDumpList();          // shows prior-day notes only
   els.brainDumpDialog.showModal();
 });
 els.brainDumpCancel.addEventListener('click', () => els.brainDumpDialog.close());
 els.brainDumpSave.addEventListener('click', (e) => {
   e.preventDefault();
   const text = els.brainDumpText.value.trim();
-  if (text) saveBrainDump(text); // empty save = no-op, never wipes a hidden note
+  if (text) addBrainDump(text); // empty save = no-op
   els.brainDumpDialog.close();
   render();
 });
-els.brainDumpClear.addEventListener('click', () => { clearBrainDump(); render(); });
+els.brainDumpList.addEventListener('click', (e) => {
+  const b = e.target.closest('.dump-del');
+  if (!b) return;
+  deleteBrainDump(b.dataset.id);
+  renderBrainDumpList();
+  render();
+});
+els.brainDumpClear.addEventListener('click', () => {
+  const id = els.brainDumpCard.dataset.id;
+  if (id) markBrainDumpSeen(id); // dismiss the card but keep it in history
+  render();
+});
 
 render();
 

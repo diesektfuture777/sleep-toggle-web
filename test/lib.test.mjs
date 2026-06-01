@@ -27,6 +27,7 @@ import {
   earnedBadges,
   sleepDebt,
   brainDumpVisible,
+  pendingReveal,
 } from '../lib.js';
 
 test('formatDuration formats h/m', () => {
@@ -447,4 +448,25 @@ test('brainDumpVisible: empty/null hidden', () => {
   const now = Date.now();
   assert.equal(brainDumpVisible({ text: '   ', createdAt: 0 }, now), false);
   assert.equal(brainDumpVisible(null, now), false);
+});
+
+test('pendingReveal: most recent unseen prior-day entry', () => {
+  const d1 = new Date('2026-05-30T23:00:00').getTime();
+  const d2 = new Date('2026-05-31T23:00:00').getTime();
+  const now = new Date('2026-06-01T07:00:00').getTime();
+  const dumps = [
+    { id: 'a', text: 'older', createdAt: d1, seen: false },
+    { id: 'b', text: 'newer', createdAt: d2, seen: false },
+  ];
+  assert.equal(pendingReveal(dumps, now).id, 'b');
+});
+
+test('pendingReveal: skips seen and same-day entries', () => {
+  const prior = new Date('2026-05-31T23:00:00').getTime();
+  const today = new Date('2026-06-01T01:00:00').getTime();
+  const now = new Date('2026-06-01T07:00:00').getTime();
+  assert.equal(pendingReveal([{ id: 'a', text: 'x', createdAt: prior, seen: true }], now), null);
+  assert.equal(pendingReveal([{ id: 'b', text: 'x', createdAt: today, seen: false }], now), null);
+  assert.equal(pendingReveal([], now), null);
+  assert.equal(pendingReveal(null, now), null);
 });
