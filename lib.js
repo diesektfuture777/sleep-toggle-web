@@ -319,3 +319,12 @@ export function brainDumpVisible(dump, now = Date.now()) {
   };
   return localDate(dump.createdAt) !== localDate(now);
 }
+
+// The brain-dump entry the Home reveal card should show: most recent UNSEEN
+// entry whose day has passed. null when none qualify.
+export function pendingReveal(dumps, now = Date.now()) {
+  if (!Array.isArray(dumps)) return null;
+  const eligible = dumps.filter((d) => !d.seen && brainDumpVisible(d, now));
+  if (eligible.length === 0) return null;
+  return eligible.reduce((a, b) => (b.createdAt > a.createdAt ? b : a));
+}

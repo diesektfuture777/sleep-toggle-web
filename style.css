@@ -220,3 +220,9 @@ dialog::backdrop { background: rgba(0,0,0,0.6); }
 .debt { margin: 8px 0 0; color: var(--muted); }
 .brain-btn { width: 100%; margin-top: 10px; }
 .brain-reveal { white-space: pre-wrap; line-height: 1.5; margin: 0 0 12px; }
+.dump-history { margin-top: 6px; text-align: left; max-height: 38vh; overflow-y: auto; }
+.dump-history-title { font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin: 10px 0 4px; }
+.dump-item { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; padding: 8px 0; border-top: 1px solid #2a2a36; }
+.dump-date { grid-column: 1; color: var(--muted); font-size: 12px; margin: 0; }
+.dump-body { grid-column: 1; white-space: pre-wrap; line-height: 1.4; margin: 0; }
+.dump-del { grid-column: 2; grid-row: 1 / span 2; background: none; border: none; color: var(--muted); font-size: 16px; cursor: pointer; align-self: start; padding: 0 4px; }
