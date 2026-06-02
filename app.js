@@ -6,6 +6,7 @@ import {
   ratingLabel, BADGES, badgesFor, earnedBadges, sleepDebt, brainDumpVisible, pendingReveal,
 } from './lib.js';
 import * as liquid from './liquid.js';
+import { initSleepAid } from './sleep-aid.js';
 
 const KEY = 'sleepToggle.sessions.v1';
 const SETTINGS_KEY = 'sleepToggle.settings.v1';
@@ -123,6 +124,8 @@ const els = {
   brainDumpCancel: $('brainDumpCancel'), brainDumpSave: $('brainDumpSave'),
   brainDumpList: $('brainDumpList'),
 };
+
+const sleepAid = initSleepAid(els.night);
 
 // ---------- helpers ----------
 function fmtTime(ts) {
@@ -331,6 +334,7 @@ function startNight(session) {
 }
 function stopNight() {
   if (elapsedTimer) { clearInterval(elapsedTimer); elapsedTimer = null; }
+  sleepAid.stop();
   liquid.stop();
   els.night.hidden = true;
 }
