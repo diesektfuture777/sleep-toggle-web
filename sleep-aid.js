@@ -360,6 +360,7 @@ export function initSleepAid(nightEl) {
 
   // Session-end stop (called from app.js stopNight)
   function stop() {
+    _isFading = false;
     clearCountdown();
     stopActiveNodes();
     if (_ctx) {
