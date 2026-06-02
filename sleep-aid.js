@@ -294,12 +294,14 @@ export function initSleepAid(nightEl) {
         mg.gain.value = 1;
         ctx.suspend();
         resetSheetUI(sheet, triggerBtn);
+        closeSheet(backdrop, sheet);
       }, 3100);
     } else {
       _isFading = false;
       stopActiveNodes();
       clearCountdown();
       resetSheetUI(sheet, triggerBtn);
+      closeSheet(backdrop, sheet);
     }
   }
 
