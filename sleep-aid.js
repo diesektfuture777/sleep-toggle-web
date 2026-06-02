@@ -11,18 +11,24 @@ function makeNoiseBuffer(ctx) {
 }
 
 function startBrownNoise(ctx, dest) {
-  const buf = makeNoiseBuffer(ctx);
+  const len = ctx.sampleRate * 2;
+  const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+  const data = buf.getChannelData(0);
+  let last = 0;
+  for (let i = 0; i < len; i++) {
+    const white = Math.random() * 2 - 1;
+    last = (last + 0.02 * white) / 1.02;
+    data[i] = last * 3.5; // scale up to audible level
+  }
   const src = ctx.createBufferSource();
   src.buffer = buf;
   src.loop = true;
-  const filter = ctx.createBiquadFilter();
-  filter.type = 'lowpass';
-  filter.frequency.value = 200;
-  filter.Q.value = 0.5;
-  src.connect(filter);
-  filter.connect(dest);
+  const gain = ctx.createGain();
+  gain.gain.value = 0.8;
+  src.connect(gain);
+  gain.connect(dest);
   src.start();
-  return [src, filter];
+  return [src, gain];
 }
 
 function startBinaural(ctx, dest) {
@@ -133,17 +139,18 @@ let _activeSoundId = null;
 let _timerMins = 30;
 let _timerEnd = null;
 let _countdownHandle = null;
+let _isFading = false;
 
 // ---------- audio helpers ----------
 
-function getCtx() {
+async function getCtx() {
   if (!_ctx) {
     _ctx = new AudioContext();
     _masterGain = _ctx.createGain();
     _masterGain.gain.value = 1;
     _masterGain.connect(_ctx.destination);
   }
-  if (_ctx.state === 'suspended') _ctx.resume();
+  if (_ctx.state === 'suspended') await _ctx.resume();
   return _ctx;
 }
 
@@ -271,6 +278,8 @@ export function initSleepAid(nightEl) {
   const saTimerRow = sheet.querySelector('.sa-timer-row');
 
   function doFadeStop() {
+    if (_isFading) return;
+    _isFading = true;
     if (_masterGain && _ctx) {
       const ctx = _ctx;
       const mg = _masterGain;
@@ -278,6 +287,7 @@ export function initSleepAid(nightEl) {
       mg.gain.setValueAtTime(mg.gain.value, ctx.currentTime);
       mg.gain.linearRampToValueAtTime(0, ctx.currentTime + 3);
       setTimeout(() => {
+        _isFading = false;
         stopActiveNodes();
         clearCountdown();
         mg.gain.cancelScheduledValues(ctx.currentTime);
@@ -286,13 +296,15 @@ export function initSleepAid(nightEl) {
         resetSheetUI(sheet, triggerBtn);
       }, 3100);
     } else {
+      _isFading = false;
       stopActiveNodes();
       clearCountdown();
       resetSheetUI(sheet, triggerBtn);
     }
   }
 
-  function playSound(soundId) {
+  async function playSound(soundId) {
+    _isFading = false;
     stopActiveNodes();
     clearCountdown();
     if (_masterGain && _ctx) {
@@ -300,7 +312,7 @@ export function initSleepAid(nightEl) {
       _masterGain.gain.value = 1;
     }
 
-    const ctx = getCtx();
+    const ctx = await getCtx();
     const sound = SOUNDS.find((s) => s.id === soundId);
     if (!sound) return;
     _activeNodes = sound.fn(ctx, _masterGain);

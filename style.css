@@ -255,9 +255,10 @@ dialog::backdrop { background: rgba(0,0,0,0.6); }
   background: rgba(0, 0, 0, 0.5);
   z-index: 99;
   opacity: 0;
+  pointer-events: none;
   transition: opacity 0.25s ease;
 }
-.sa-backdrop.open { opacity: 1; }
+.sa-backdrop.open { opacity: 1; pointer-events: auto; }
 
 .sa-sheet {
   position: fixed;
