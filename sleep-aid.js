@@ -142,15 +142,18 @@ let _fadeHandle = null;
 let _isFading = false;
 const _blobCache = {}; // soundId -> object URL
 
-// Per-sound loop config. Lengths chosen so the loop wraps cleanly:
-// binaural 0.5s = 100 & 101 cycles of 200/202 Hz (seamless, no crossfade);
-// hz432 1.0s = 432 whole cycles (seamless); noise/LFO sounds use a whole
+// Per-sound loop config. Lengths chosen so the loop wraps cleanly AND the
+// loop boundary is hit rarely — HTML <audio loop> is not gapless, so a short
+// loop injects an audible transient at every wrap (a 0.5s binaural loop ticked
+// twice a second = a 2Hz "blink"). Pure tones therefore use a long 30s loop:
+// binaural 30s = 6000 & 6060 whole cycles of 200/202 Hz; hz432 30s = 12960
+// whole cycles — both seamless, no crossfade. Noise/LFO sounds use a whole
 // number of LFO periods plus a short crossfade to hide the noise wrap.
 const LOOP_CFG = {
   brown:    { sec: 30,  fade: 0.05 },
-  binaural: { sec: 0.5, fade: 0    },
+  binaural: { sec: 30,  fade: 0    },
   rain:     { sec: 30,  fade: 0.05 },
-  hz432:    { sec: 1.0, fade: 0    },
+  hz432:    { sec: 30,  fade: 0    },
   ocean:    { sec: 25,  fade: 0.05 },
 };
 const SAMPLE_RATE = 44100;
