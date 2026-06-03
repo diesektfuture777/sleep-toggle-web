@@ -121,14 +121,103 @@ function startOcean(ctx, dest) {
   return [src, filter, gainNode, lfo, lfoGain];
 }
 
+function startWhiteNoise(ctx, dest) {
+  const len = ctx.length || ctx.sampleRate * 2;
+  const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+  const data = buf.getChannelData(0);
+  for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
+  const src = ctx.createBufferSource();
+  src.buffer = buf;
+  src.loop = true;
+  const gain = ctx.createGain();
+  gain.gain.value = 0.45;
+  src.connect(gain);
+  gain.connect(dest);
+  src.start();
+  return [src, gain];
+}
+
+function startPinkNoise(ctx, dest) {
+  // Paul Kellet's refined pink-noise filter, baked straight into the buffer.
+  const len = ctx.length || ctx.sampleRate * 2;
+  const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+  const data = buf.getChannelData(0);
+  let b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0;
+  for (let i = 0; i < len; i++) {
+    const white = Math.random() * 2 - 1;
+    b0 = 0.99886 * b0 + white * 0.0555179;
+    b1 = 0.99332 * b1 + white * 0.0750759;
+    b2 = 0.96900 * b2 + white * 0.1538520;
+    b3 = 0.86650 * b3 + white * 0.3104856;
+    b4 = 0.55000 * b4 + white * 0.5329522;
+    b5 = -0.7616 * b5 - white * 0.0168980;
+    data[i] = (b0 + b1 + b2 + b3 + b4 + b5 + b6 + white * 0.5362) * 0.11;
+    b6 = white * 0.115926;
+  }
+  const src = ctx.createBufferSource();
+  src.buffer = buf;
+  src.loop = true;
+  const gain = ctx.createGain();
+  gain.gain.value = 0.7;
+  src.connect(gain);
+  gain.connect(dest);
+  src.start();
+  return [src, gain];
+}
+
+function startWind(ctx, dest) {
+  // Filtered noise with a slowly sweeping lowpass cutoff + amplitude swell.
+  // LFO rates are whole cycles per 30s loop so the envelope wraps seamlessly.
+  const len = ctx.length || ctx.sampleRate * 2;
+  const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+  const data = buf.getChannelData(0);
+  for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
+  const src = ctx.createBufferSource();
+  src.buffer = buf;
+  src.loop = true;
+
+  const lp = ctx.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.frequency.value = 500;
+  lp.Q.value = 0.5;
+  const cutoffLfo = ctx.createOscillator();
+  cutoffLfo.type = 'sine';
+  cutoffLfo.frequency.value = 0.1;      // 3 cycles / 30s
+  const cutoffDepth = ctx.createGain();
+  cutoffDepth.gain.value = 300;
+  cutoffLfo.connect(cutoffDepth);
+  cutoffDepth.connect(lp.frequency);
+
+  const gain = ctx.createGain();
+  gain.gain.value = 0.9;
+  const ampLfo = ctx.createOscillator();
+  ampLfo.type = 'sine';
+  ampLfo.frequency.value = 2 / 30;      // 2 cycles / 30s
+  const ampDepth = ctx.createGain();
+  ampDepth.gain.value = 0.25;
+  ampLfo.connect(ampDepth);
+  ampDepth.connect(gain.gain);
+
+  src.connect(lp);
+  lp.connect(gain);
+  gain.connect(dest);
+  src.start();
+  cutoffLfo.start();
+  ampLfo.start();
+  return [src, lp, cutoffLfo, cutoffDepth, gain, ampLfo, ampDepth];
+}
+
 // ---------- sound catalog ----------
 
 const SOUNDS = [
   { id: 'brown',    label: 'Brown Noise',    note: null,            fn: startBrownNoise },
+  { id: 'white',    label: 'White Noise',    note: null,            fn: startWhiteNoise },
+  { id: 'pink',     label: 'Pink Noise',     note: null,            fn: startPinkNoise  },
   { id: 'binaural', label: 'Binaural Beats', note: '🎧 headphones', fn: startBinaural   },
   { id: 'rain',     label: 'Rain',           note: null,            fn: startRain       },
-  { id: 'hz432',    label: '432 Hz',         note: null,            fn: start432Hz      },
   { id: 'ocean',    label: 'Ocean Waves',    note: null,            fn: startOcean      },
+  { id: 'wind',     label: 'Wind',           note: null,            fn: startWind       },
+  { id: 'hz432',    label: '432 Hz',         note: null,            fn: start432Hz      },
 ];
 
 // ---------- module state ----------
@@ -151,10 +240,13 @@ const _blobCache = {}; // soundId -> object URL
 // number of LFO periods plus a short crossfade to hide the noise wrap.
 const LOOP_CFG = {
   brown:    { sec: 30,  fade: 0.05 },
+  white:    { sec: 30,  fade: 0.05 },
+  pink:     { sec: 30,  fade: 0.05 },
   binaural: { sec: 30,  fade: 0    },
   rain:     { sec: 30,  fade: 0.05 },
-  hz432:    { sec: 30,  fade: 0    },
   ocean:    { sec: 25,  fade: 0.05 },
+  wind:     { sec: 30,  fade: 0.05 },
+  hz432:    { sec: 30,  fade: 0    },
 };
 const SAMPLE_RATE = 44100;
 
