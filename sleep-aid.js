@@ -1,4 +1,5 @@
 // sleep-aid.js — Web Audio API sound generators + bottom sheet UI
+import { encodeWAV, crossfadeLoop } from './wav.js';
 
 // ---------- audio utilities ----------
 
@@ -132,31 +133,62 @@ const SOUNDS = [
 
 // ---------- module state ----------
 
-let _ctx = null;
-let _masterGain = null;
-let _activeNodes = [];
+let _audioEl = null;
 let _activeSoundId = null;
 let _timerMins = 30;
 let _timerEnd = null;
 let _countdownHandle = null;
+let _fadeHandle = null;
 let _isFading = false;
+const _blobCache = {}; // soundId -> object URL
+
+// Per-sound loop config. Lengths chosen so the loop wraps cleanly:
+// binaural 0.5s = 100 & 101 cycles of 200/202 Hz (seamless, no crossfade);
+// hz432 1.0s = 432 whole cycles (seamless); noise/LFO sounds use a whole
+// number of LFO periods plus a short crossfade to hide the noise wrap.
+const LOOP_CFG = {
+  brown:    { sec: 30,  fade: 0.05 },
+  binaural: { sec: 0.5, fade: 0    },
+  rain:     { sec: 30,  fade: 0.05 },
+  hz432:    { sec: 1.0, fade: 0    },
+  ocean:    { sec: 25,  fade: 0.05 },
+};
+const SAMPLE_RATE = 44100;
+
+// ---------- audio rendering ----------
+
+async function renderLoop(sound) {
+  const cfg = LOOP_CFG[sound.id] || { sec: 20, fade: 0.05 };
+  const frames = Math.ceil(SAMPLE_RATE * (cfg.sec + cfg.fade));
+  const oac = new OfflineAudioContext(2, frames, SAMPLE_RATE);
+  sound.fn(oac, oac.destination); // generators reused unchanged
+  const buf = await oac.startRendering();
+  let channels = [buf.getChannelData(0), buf.getChannelData(1)];
+  if (cfg.fade > 0) channels = crossfadeLoop(channels, SAMPLE_RATE, cfg.fade);
+  const bytes = encodeWAV(channels, SAMPLE_RATE);
+  const blob = new Blob([bytes], { type: 'audio/wav' });
+  return URL.createObjectURL(blob);
+}
+
+async function getBlobUrl(sound) {
+  if (!_blobCache[sound.id]) _blobCache[sound.id] = await renderLoop(sound);
+  return _blobCache[sound.id];
+}
 
 // ---------- audio helpers ----------
 
-async function getCtx() {
-  if (!_ctx) {
-    _ctx = new AudioContext();
-    _masterGain = _ctx.createGain();
-    _masterGain.gain.value = 1;
-    _masterGain.connect(_ctx.destination);
-  }
-  if (_ctx.state === 'suspended') await _ctx.resume();
-  return _ctx;
+function clearFadeInterval() {
+  clearInterval(_fadeHandle);
+  _fadeHandle = null;
 }
 
-function stopActiveNodes() {
-  _activeNodes.forEach((n) => { try { n.stop?.(); n.disconnect(); } catch (_) {} });
-  _activeNodes = [];
+function hardStopAudio() {
+  if (_audioEl) {
+    _audioEl.pause();
+    _audioEl.removeAttribute('src');
+    _audioEl.load();
+    _audioEl.volume = 1;
+  }
   _activeSoundId = null;
 }
 
@@ -272,55 +304,103 @@ export function initSleepAid(nightEl) {
   const triggerBtn = nightEl.querySelector('#sleepAidBtn');
   const { backdrop, sheet } = buildSheet();
 
+  _audioEl = document.createElement('audio');
+  _audioEl.loop = true;
+  _audioEl.setAttribute('playsinline', '');
+  _audioEl.hidden = true;
+  document.body.appendChild(_audioEl);
+
   const saClose = sheet.querySelector('.sa-close');
   const saStop = sheet.querySelector('.sa-stop');
   const saSoundsEl = sheet.querySelector('.sa-sounds');
   const saTimerRow = sheet.querySelector('.sa-timer-row');
 
+  function setupMediaSession(sound) {
+    if (!('mediaSession' in navigator)) return;
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: sound.label,
+      artist: 'Sleep Aid',
+      artwork: [
+        { src: './icons/icon-192.png', sizes: '192x192', type: 'image/png' },
+        { src: './icons/icon-512.png', sizes: '512x512', type: 'image/png' },
+      ],
+    });
+    navigator.mediaSession.playbackState = 'playing';
+    navigator.mediaSession.setActionHandler('play', () => {
+      _audioEl.play();
+      navigator.mediaSession.playbackState = 'playing';
+    });
+    navigator.mediaSession.setActionHandler('pause', () => {
+      _audioEl.pause();
+      navigator.mediaSession.playbackState = 'paused';
+    });
+    navigator.mediaSession.setActionHandler('stop', () => doFadeStop());
+  }
+
+  function clearMediaSession() {
+    if (!('mediaSession' in navigator)) return;
+    navigator.mediaSession.playbackState = 'none';
+    navigator.mediaSession.metadata = null;
+    try {
+      navigator.mediaSession.setActionHandler('play', null);
+      navigator.mediaSession.setActionHandler('pause', null);
+      navigator.mediaSession.setActionHandler('stop', null);
+    } catch (_) {}
+  }
+
   function doFadeStop() {
     if (_isFading) return;
     _isFading = true;
-    if (_masterGain && _ctx) {
-      const ctx = _ctx;
-      const mg = _masterGain;
-      mg.gain.cancelScheduledValues(ctx.currentTime);
-      mg.gain.setValueAtTime(mg.gain.value, ctx.currentTime);
-      mg.gain.linearRampToValueAtTime(0, ctx.currentTime + 3);
-      setTimeout(() => {
+    clearFadeInterval();
+    const steps = 30;
+    const durMs = 3000;
+    const startVol = _audioEl ? _audioEl.volume : 0;
+    let i = 0;
+    _fadeHandle = setInterval(() => {
+      i++;
+      if (_audioEl) _audioEl.volume = Math.max(0, startVol * (1 - i / steps));
+      if (i >= steps) {
+        clearFadeInterval();
+        hardStopAudio();
         _isFading = false;
-        stopActiveNodes();
         clearCountdown();
-        mg.gain.cancelScheduledValues(ctx.currentTime);
-        mg.gain.value = 1;
-        ctx.suspend();
+        clearMediaSession();
         resetSheetUI(sheet, triggerBtn);
         closeSheet(backdrop, sheet);
-      }, 3100);
-    } else {
-      _isFading = false;
-      stopActiveNodes();
-      clearCountdown();
-      resetSheetUI(sheet, triggerBtn);
-      closeSheet(backdrop, sheet);
-    }
+      }
+    }, durMs / steps);
   }
 
   async function playSound(soundId) {
     _isFading = false;
-    stopActiveNodes();
+    clearFadeInterval();
     clearCountdown();
-    if (_masterGain && _ctx) {
-      _masterGain.gain.cancelScheduledValues(_ctx.currentTime);
-      _masterGain.gain.value = 1;
-    }
-
-    const ctx = await getCtx();
     const sound = SOUNDS.find((s) => s.id === soundId);
     if (!sound) return;
-    _activeNodes = sound.fn(ctx, _masterGain);
-    _activeSoundId = soundId;
 
+    let url;
+    try {
+      url = await getBlobUrl(sound);
+    } catch (e) {
+      console.warn('sleep-aid: render failed', e);
+      resetSheetUI(sheet, triggerBtn);
+      return;
+    }
+
+    _audioEl.src = url;
+    _audioEl.loop = true;
+    _audioEl.volume = 1;
+    try {
+      await _audioEl.play();
+    } catch (e) {
+      console.warn('sleep-aid: play rejected', e);
+      resetSheetUI(sheet, triggerBtn);
+      return;
+    }
+
+    _activeSoundId = soundId;
     setPlaying(sheet, soundId, triggerBtn);
+    setupMediaSession(sound);
     startCountdown(sheet, doFadeStop);
   }
 
@@ -361,13 +441,10 @@ export function initSleepAid(nightEl) {
   // Session-end stop (called from app.js stopNight)
   function stop() {
     _isFading = false;
+    clearFadeInterval();
     clearCountdown();
-    stopActiveNodes();
-    if (_ctx) {
-      _masterGain.gain.cancelScheduledValues(_ctx.currentTime);
-      _masterGain.gain.value = 1;
-      _ctx.suspend();
-    }
+    hardStopAudio();
+    clearMediaSession();
     resetSheetUI(sheet, triggerBtn);
     closeSheet(backdrop, sheet);
   }
