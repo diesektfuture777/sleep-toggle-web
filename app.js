@@ -11,6 +11,15 @@ import { initSleepAid } from './sleep-aid.js';
 const KEY = 'sleepToggle.sessions.v1';
 const SETTINGS_KEY = 'sleepToggle.settings.v1';
 
+// Build version stamp — set by tools/build-dist.sh to the same content hash as
+// the service-worker cache; stays 'dev' when served unbuilt. Lets you tell at a
+// glance whether the live PWA is the latest deploy or a stale cached one.
+(() => {
+  const v = document.querySelector('meta[name="build-version"]')?.content || 'dev';
+  const el = document.getElementById('appVersion');
+  if (el) el.textContent = v === 'dev' ? 'dev' : `v·${v}`;
+})();
+
 // ---------- storage ----------
 function load() {
   try {

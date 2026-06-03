@@ -16,6 +16,8 @@ HASH=$(cat dist/index.html dist/app.js dist/lib.js dist/liquid.js dist/sleep-aid
   | shasum | cut -c1-10)
 # Portable in-place edit (works on both macOS BSD sed and Linux/Netlify GNU sed).
 sed "s/sleep-toggle-dev/sleep-toggle-${HASH}/" dist/sw.js > dist/sw.js.tmp && mv dist/sw.js.tmp dist/sw.js
+# Stamp the same hash into the visible build-version label.
+sed "s/name=\"build-version\" content=\"dev\"/name=\"build-version\" content=\"${HASH}\"/" dist/index.html > dist/index.html.tmp && mv dist/index.html.tmp dist/index.html
 
 echo "dist/ ready (cache: sleep-toggle-${HASH}):"
 find dist -type f | sort

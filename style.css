@@ -32,6 +32,7 @@ body {
 }
 
 .title { font-size: 22px; font-weight: 700; text-align: center; margin: 8px 0 0; }
+.app-version { margin-left: 6px; font-size: 10px; font-weight: 500; vertical-align: middle; opacity: 0.4; letter-spacing: 0.5px; }
 
 .status { text-align: center; }
 .status-line { font-size: 18px; color: var(--muted); margin: 0; }
