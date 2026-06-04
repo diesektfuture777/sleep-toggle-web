@@ -231,22 +231,23 @@ let _fadeHandle = null;
 let _isFading = false;
 const _blobCache = {}; // soundId -> object URL
 
-// Per-sound loop config. Lengths chosen so the loop wraps cleanly AND the
-// loop boundary is hit rarely — HTML <audio loop> is not gapless, so a short
-// loop injects an audible transient at every wrap (a 0.5s binaural loop ticked
-// twice a second = a 2Hz "blink"). Pure tones therefore use a long 30s loop:
-// binaural 30s = 6000 & 6060 whole cycles of 200/202 Hz; hz432 30s = 12960
-// whole cycles — both seamless, no crossfade. Noise/LFO sounds use a whole
-// number of LFO periods plus a short crossfade to hide the noise wrap.
+// Per-sound loop config. HTML <audio loop> is NOT gapless on iOS — the player
+// inserts a brief silence each time it re-seeks to the start, so we make the
+// loop long (5 min) to push that wrap far apart. Lengths are whole numbers of
+// every periodic component so the content also wraps cleanly: binaural 300s =
+// 60000 & 60600 cycles of 200/202 Hz; hz432 300s = 129600 cycles (both
+// seamless, no crossfade). Noise/LFO sounds use whole LFO periods plus a short
+// crossfade to hide the noise wrap. Cost: a 5-min stereo WAV is ~53 MB in
+// memory, so getBlobUrl() keeps only the active sound's buffer (see below).
 const LOOP_CFG = {
-  brown:    { sec: 30,  fade: 0.05 },
-  white:    { sec: 30,  fade: 0.05 },
-  pink:     { sec: 30,  fade: 0.05 },
-  binaural: { sec: 30,  fade: 0    },
-  rain:     { sec: 30,  fade: 0.05 },
-  ocean:    { sec: 25,  fade: 0.05 },
-  wind:     { sec: 30,  fade: 0.05 },
-  hz432:    { sec: 30,  fade: 0    },
+  brown:    { sec: 300, fade: 0.05 },
+  white:    { sec: 300, fade: 0.05 },
+  pink:     { sec: 300, fade: 0.05 },
+  binaural: { sec: 300, fade: 0    },
+  rain:     { sec: 300, fade: 0.05 },
+  ocean:    { sec: 300, fade: 0.05 },
+  wind:     { sec: 300, fade: 0.05 },
+  hz432:    { sec: 300, fade: 0    },
 };
 const SAMPLE_RATE = 44100;
 
@@ -266,7 +267,17 @@ async function renderLoop(sound) {
 }
 
 async function getBlobUrl(sound) {
-  if (!_blobCache[sound.id]) _blobCache[sound.id] = await renderLoop(sound);
+  if (!_blobCache[sound.id]) {
+    // A 5-min stereo WAV is ~53 MB, so keep only one in memory: free every
+    // other cached blob before rendering a new sound. The currently-playing
+    // element has already loaded its resource, so revoking here is safe — the
+    // src is reassigned to the new url immediately after this resolves.
+    for (const id in _blobCache) {
+      URL.revokeObjectURL(_blobCache[id]);
+      delete _blobCache[id];
+    }
+    _blobCache[sound.id] = await renderLoop(sound);
+  }
   return _blobCache[sound.id];
 }
 
